@@ -1,0 +1,62 @@
+<DOCTYPE html>
+<html>
+
+<head>
+  <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+  <link rel="stylesheet" href="sevenseg.css" >
+  <style>
+.frequence {
+  height: 25px;
+  width:  200px;
+}
+  </style>
+  <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+  <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+  <!-- http://knockoutjs.com/index.html -->
+  <script src="https://ajax.aspnetcdn.com/ajax/knockout/knockout-2.2.1.js"></script>
+  <script src="sevenSeg.js"></script>
+  <script>
+$(document).ready(function() {
+  var rgStations = [
+      { nFrequence: 123.500, sName: "Geratshf" },
+      { nFrequence: 123.995, sName: "BadWoer" },
+      { nFrequence: 120.100, sName: "KemptenD" },
+      { nFrequence: 126.025, sName: "Agathazl" },
+      { nFrequence: 118.500, sName: "Memmingn" },
+      { nFrequence: 122.500, sName: "Paterzel" }
+    ];
+
+  rgStations.forEach(function (curVal) {
+    $( '#stations' ).append('<li value="' + curVal.nFrequence + '"class="ui-widget-content">' + curVal.sName + '</li>');
+  });
+  $( '#stations' ).selectable({
+      stop: function () {
+          var resultText =  $( '.ui-selected' ).text(),
+              sAttrValue =  $( '.ui-selected' ).attr("value"),
+              fAttrValue =  parseFloat(sAttrValue, 10),
+              sMHZ = sAttrValue.substring(0, 3),
+              sKHZ = (fAttrValue * 1000).toString().substring(3),
+              hMHZ = parseInt(sMHZ).toString(16),
+              hKHZ = parseInt(sKHZ / 5).toString(16);
+
+          $( '#command' ).text("02 U " + hMHZ + " " + hKHZ);
+          ko.applyBindings({ station: ko.observable(fAttrValue) });
+        }
+    });
+
+  $( 'body' ).on("wheel", function () {
+    var i = 0;
+  });
+});
+  </script>
+</head>
+
+<body>
+  <div class="frequence" data-bind="sevenSeg: { digits: 6, value: station, allowInput: true, step: 0.025, decimalPlaces: 3 }"></div>
+  <hr/>
+  <input id="frequence" type="hidden" data-bind="value: station, valueUpdate: 'afterkeydown'" >
+  <p id="command"></p>
+  <ol id="stations"></ol>
+</body>
+
+</html>
