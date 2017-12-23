@@ -1,4 +1,3 @@
-
 // COMHost.cpp : Defines the class behaviors for the application.
 //
 
@@ -10,16 +9,12 @@
 #define new DEBUG_NEW
 #endif
 
-
 // CCOMHostApp
-
 BEGIN_MESSAGE_MAP(CCOMHostApp, CWinApp)
 	ON_COMMAND(ID_HELP, &CWinApp::OnHelp)
 END_MESSAGE_MAP()
 
-
 // CCOMHostApp construction
-
 CCOMHostApp::CCOMHostApp()
 {
 	// support Restart Manager
@@ -29,14 +24,10 @@ CCOMHostApp::CCOMHostApp()
 	// Place all significant initialization in InitInstance
 }
 
-
 // The one and only CCOMHostApp object
-
 CCOMHostApp theApp;
 
-
 // CCOMHostApp initialization
-
 BOOL CCOMHostApp::InitInstance()
 {
 	// InitCommonControlsEx() is required on Windows XP if an application
@@ -50,8 +41,9 @@ BOOL CCOMHostApp::InitInstance()
 	InitCommonControlsEx(&InitCtrls);
 
 	CWinApp::InitInstance();
-
-
+	CRegKey rkBrowserEmulation;
+	rkBrowserEmulation.Open(HKEY_CURRENT_USER, _T("Software\\Microsoft\\Internet Explorer\\Main\\FeatureControl\\FEATURE_BROWSER_EMULATION"), KEY_WRITE);
+	rkBrowserEmulation.SetDWORDValue(_T("COMHost.exe"), 11000); // hart codierter modulname
 	AfxEnableControlContainer();
 
 	// Create the shell manager, in case the dialog contains
@@ -103,4 +95,3 @@ BOOL CCOMHostApp::InitInstance()
 	//  application, rather than start the application's message pump.
 	return FALSE;
 }
-

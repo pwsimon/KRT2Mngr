@@ -1,4 +1,3 @@
-
 // COMHostDlg.cpp : implementation file
 //
 
@@ -11,9 +10,7 @@
 #define new DEBUG_NEW
 #endif
 
-
 // CAboutDlg dialog used for App About
-
 class CAboutDlg : public CDialogEx
 {
 public:
@@ -44,14 +41,11 @@ void CAboutDlg::DoDataExchange(CDataExchange* pDX)
 BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
 END_MESSAGE_MAP()
 
-
 // CCOMHostDlg dialog
-
 BEGIN_DHTML_EVENT_MAP(CCOMHostDlg)
-	DHTML_EVENT_ONCLICK(_T("ButtonOK"), OnButtonOK)
+	DHTML_EVENT_ONCLICK(_T("btnSend"), OnSend)
 	DHTML_EVENT_ONCLICK(_T("ButtonCancel"), OnButtonCancel)
 END_DHTML_EVENT_MAP()
-
 
 CCOMHostDlg::CCOMHostDlg(CWnd* pParent /*=NULL*/)
 	: CDHtmlDialog(IDD_COMHOST_DIALOG, IDR_HTML_COMHOST_DIALOG, pParent)
@@ -68,12 +62,23 @@ BEGIN_MESSAGE_MAP(CCOMHostDlg, CDHtmlDialog)
 	ON_WM_SYSCOMMAND()
 END_MESSAGE_MAP()
 
-
 // CCOMHostDlg message handlers
-
 BOOL CCOMHostDlg::OnInitDialog()
 {
+	/*
+	* wir navigieren zu einer externen resource
+	* script fehler? welche zone? welche rechte?
+	*   siehe auch:
+	*     COMHost.cpp(44): CCOMHostApp::InitInstance()
+	*     HKEY_CURRENT_USER\SOFTWARE\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\COMHost.exe (REG_DWORD) 11000
+	* debuggen der MFC sourcen durch linken der MFC als static lib
+	*/
+	m_nHtmlResID = 0;
+	m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
+	// m_strCurrentUrl = _T("http://localhost/krt2mngr/sevenseg.html"); // need browser_emulation
 	CDHtmlDialog::OnInitDialog();
+	// Navigate(_T("http://localhost/krt2mngr/sevenseg.html"));
+	SetExternalDispatch(NULL); // this ODER irgend ein DHTML_EVENT_XXX Macro
 
 	// Add "About..." menu item to system menu.
 
@@ -121,7 +126,6 @@ void CCOMHostDlg::OnSysCommand(UINT nID, LPARAM lParam)
 // If you add a minimize button to your dialog, you will need the code below
 //  to draw the icon.  For MFC applications using the document/view model,
 //  this is automatically done for you by the framework.
-
 void CCOMHostDlg::OnPaint()
 {
 	if (IsIconic())
@@ -154,9 +158,17 @@ HCURSOR CCOMHostDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
-HRESULT CCOMHostDlg::OnButtonOK(IHTMLElement* /*pElement*/)
+HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 {
-	OnOK();
+	// Serial Port Sample, https://code.msdn.microsoft.com/windowsdesktop/Serial-Port-Sample-e8accf30/sourcecode?fileId=67164&pathId=1394200469
+	HANDLE hPort1 = CreateFile(TEXT("COM1"), // Name of the port
+		GENERIC_READ | GENERIC_WRITE, // Access (read-write) mode
+		0,
+		NULL,
+		OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL,
+		NULL);
+	_ASSERT(INVALID_HANDLE_VALUE != hPort1);
 	return S_OK;
 }
 

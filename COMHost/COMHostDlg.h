@@ -20,7 +20,7 @@ public:
 	protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV support
 
-	HRESULT OnButtonOK(IHTMLElement *pElement);
+	HRESULT OnSend(IHTMLElement *pElement);
 	HRESULT OnButtonCancel(IHTMLElement *pElement);
 
 // Implementation
