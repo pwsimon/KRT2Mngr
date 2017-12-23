@@ -76,7 +76,7 @@ $(document).ready(function () {
 	<div class="frequence" data-bind="sevenSeg: { digits: 6, value: station, allowInput: true, step: 0.025, decimalPlaces: 3 }"></div>
 	<hr/>
 	<input id="frequence" type="hidden" data-bind="value: station, valueUpdate: 'afterkeydown'" >
-	<p id="command"></p>
+	<p><span id="command"></span><button id="btnSend">Send</button></p>
 	<ol id="stations"></ol>
 </body>
 

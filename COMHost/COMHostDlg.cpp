@@ -71,14 +71,12 @@ BOOL CCOMHostDlg::OnInitDialog()
 	*   siehe auch:
 	*     COMHost.cpp(44): CCOMHostApp::InitInstance()
 	*     HKEY_CURRENT_USER\SOFTWARE\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\COMHost.exe (REG_DWORD) 11000
-	* debuggen der MFC sourcen durch linken der MFC als static lib
 	*/
 	m_nHtmlResID = 0;
-	m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
-	// m_strCurrentUrl = _T("http://localhost/krt2mngr/sevenseg.html"); // need browser_emulation
+	// m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
+	m_strCurrentUrl = _T("http://localhost/krt2mngr/sevenseg.html"); // need browser_emulation
 	CDHtmlDialog::OnInitDialog();
 	// Navigate(_T("http://localhost/krt2mngr/sevenseg.html"));
-	SetExternalDispatch(NULL); // this ODER irgend ein DHTML_EVENT_XXX Macro
 
 	// Add "About..." menu item to system menu.
 
@@ -161,7 +159,7 @@ HCURSOR CCOMHostDlg::OnQueryDragIcon()
 HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 {
 	// Serial Port Sample, https://code.msdn.microsoft.com/windowsdesktop/Serial-Port-Sample-e8accf30/sourcecode?fileId=67164&pathId=1394200469
-	HANDLE hPort1 = CreateFile(TEXT("COM1"), // Name of the port
+	HANDLE hPort1 = ::CreateFile(TEXT("COM1"), // Name of the port
 		GENERIC_READ | GENERIC_WRITE, // Access (read-write) mode
 		0,
 		NULL,
@@ -169,6 +167,8 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 		FILE_ATTRIBUTE_NORMAL,
 		NULL);
 	_ASSERT(INVALID_HANDLE_VALUE != hPort1);
+	CComBSTR bstrCommand = GetElementText(_T("command"));
+	::CloseHandle(hPort1);
 	return S_OK;
 }
 

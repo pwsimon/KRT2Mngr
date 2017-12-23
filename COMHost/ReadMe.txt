@@ -7,3 +7,5 @@ variante 2: (BTHost.exe) echter zugriff ueber die BT API
 
 - mit FEATURE_BROWSER_EMULATION damit unser HTML GUI die noetigen HTML5/CSS features unterstuetzt
 - mit m_strCurrentUrl navigieren wir zur initialen page via. http:// anstatt res://
+- mit DDX_DHtml_ElementInnerText() bzw. GetElementText() holen wir uns das zu sendende command aus dem DOM
+- _DEBUG Build, debuggen der MFC sourcen durch linken der MFC als static lib
