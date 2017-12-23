@@ -2,33 +2,33 @@
 <html>
 
 <head>
-  <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
-  <link rel="stylesheet" href="sevenseg.css" >
-  <style>
+	<link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+	<link rel="stylesheet" href="sevenseg.css" >
+	<style>
 .frequence {
-  height: 25px;
-  width:  200px;
+	height: 25px;
+	width:  200px;
 }
-  </style>
-  <script src="//code.jquery.com/jquery-1.12.4.js"></script>
-  <script src="//code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
-  <!-- http://knockoutjs.com/index.html -->
-  <script src="//ajax.aspnetcdn.com/ajax/knockout/knockout-2.2.1.js"></script>
-  <script src="sevenSeg.js"></script>
-  <script>
+	</style>
+	<script src="//code.jquery.com/jquery-1.12.4.js"></script>
+	<script src="//code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+	<!-- http://knockoutjs.com/index.html -->
+	<script src="//ajax.aspnetcdn.com/ajax/knockout/knockout-2.2.1.js"></script>
+	<script src="sevenSeg.js"></script>
+	<script>
 $(document).ready(function() {
-  var rgStations = [
-      { nFrequence: 123.500, sName: "Geratshf" },
-      { nFrequence: 123.995, sName: "BadWoer" },
-      { nFrequence: 120.100, sName: "KemptenD" },
-      { nFrequence: 126.025, sName: "Agathazl" },
-      { nFrequence: 118.500, sName: "Memmingn" },
-      { nFrequence: 122.500, sName: "Paterzel" }
-    ];
+	var rgStations = [
+		{ nFrequence: 123.500, sName: "Geratshf" },
+		{ nFrequence: 123.995, sName: "BadWoer" },
+		{ nFrequence: 120.100, sName: "KemptenD" },
+		{ nFrequence: 126.025, sName: "Agathazl" },
+		{ nFrequence: 118.500, sName: "Memmingn" },
+		{ nFrequence: 122.500, sName: "Paterzel" }
+	];
 
-  rgStations.forEach(function (curVal) {
-    $( '#stations' ).append('<li value="' + curVal.nFrequence + '"class="ui-widget-content">' + curVal.sName + '</li>');
-  });
+	rgStations.forEach(function (curVal) {
+		$( '#stations' ).append('<li value="' + curVal.nFrequence + '"class="ui-widget-content">' + curVal.sName + '</li>');
+	});
 	$( '#stations' ).selectable({
 		stop: function () {
 			var resultText = $('.ui-selected').text(),
@@ -37,9 +37,9 @@ $(document).ready(function() {
 				sMHZ = sAttrValue.substring(0, 3),
 				sKHZ = (fAttrValue * 1000).toString().substring(3),
 				nMHZ = parseInt(sMHZ),
-				nKHZ = parseInt(sKHZ),
+				nKHZ = parseInt(sKHZ) / 5,
 				nChkSum = nMHZ ^ nKHZ,
-				rgCommand = [2, "U".charCodeAt(0), nKHZ / 5], // wir bauen ein Array (most generic)
+				rgCommand = [2, "U".charCodeAt(0), nKHZ ], // wir bauen ein Array (most generic)
 				nIndex = 0,
 				sCommand = "";
 
@@ -57,20 +57,16 @@ $(document).ready(function() {
 			ko.applyBindings({ station: ko.observable(fAttrValue) });
 		}
 	});
-
-  $( 'body' ).on("wheel", function () {
-    var i = 0;
-  });
 });
-  </script>
+	</script>
 </head>
 
 <body>
-  <div class="frequence" data-bind="sevenSeg: { digits: 6, value: station, allowInput: true, step: 0.025, decimalPlaces: 3 }"></div>
-  <hr/>
-  <input id="frequence" type="hidden" data-bind="value: station, valueUpdate: 'afterkeydown'" >
-  <p id="command"></p>
-  <ol id="stations"></ol>
+	<div class="frequence" data-bind="sevenSeg: { digits: 6, value: station, allowInput: true, step: 0.025, decimalPlaces: 3 }"></div>
+	<hr/>
+	<input id="frequence" type="hidden" data-bind="value: station, valueUpdate: 'afterkeydown'" >
+	<p id="command"></p>
+	<ol id="stations"></ol>
 </body>
 
 </html>
