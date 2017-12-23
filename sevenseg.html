@@ -16,26 +16,37 @@
 	<script src="//ajax.aspnetcdn.com/ajax/knockout/knockout-2.2.1.js"></script>
 	<script src="sevenSeg.js"></script>
 	<script>
-$(document).ready(function() {
+$(document).ready(function () {
+	/*
+	* wir definieren nFrequence als number und speichern NUR (fixed length) int (KEINE floats)
+	* - wir speichern in der string repeaesentation IMMER 6 stellen (fuehrende nullen)
+	* - somit ist die einheit kHZ.
+	*
+	* trigger fuer diese umstellung war der IE, der fuer das <li value=""> keine floats, strings akzeptieren wollte.
+	* - mit der einheit MHZ und der resultierenden notwendigkeit floats zu speichen gibt es unnoetige schwierigkeiten beim verstaendniss
+	* - in der Anzeige wollen wir nach wie vor die einheit MHZ bzw. den daraus resultierenden dezimalpunkt
+	*/
 	var rgStations = [
-		{ nFrequence: 123.500, sName: "Geratshf" },
-		{ nFrequence: 123.995, sName: "BadWoer" },
-		{ nFrequence: 120.100, sName: "KemptenD" },
-		{ nFrequence: 126.025, sName: "Agathazl" },
-		{ nFrequence: 118.500, sName: "Memmingn" },
-		{ nFrequence: 122.500, sName: "Paterzel" }
+		{ nFrequence: 123500, sName: "Geratshf" },
+		{ nFrequence: 123995, sName: "BadWoer" },
+		{ nFrequence: 120100, sName: "KemptenD" },
+		{ nFrequence: 126025, sName: "Agathazl" },
+		{ nFrequence: 118500, sName: "Memmingn" },
+		{ nFrequence: 122500, sName: "Paterzel" }
 	];
 
 	rgStations.forEach(function (curVal) {
-		$( '#stations' ).append('<li value="' + curVal.nFrequence + '"class="ui-widget-content">' + curVal.sName + '</li>');
+		var sFrequence = curVal.nFrequence,
+			sLI = '<li value="' + sFrequence + '"class="ui-widget-content">' + curVal.sName + '</li>';
+		$('#stations').append(sLI);
 	});
 	$( '#stations' ).selectable({
 		stop: function () {
 			var resultText = $('.ui-selected').text(),
 				sAttrValue = $('.ui-selected').attr("value"),
-				fAttrValue = parseFloat(sAttrValue, 10),
+				fAttrValue = parseFloat(sAttrValue, 10) / 1000,
 				sMHZ = sAttrValue.substring(0, 3),
-				sKHZ = (fAttrValue * 1000).toString().substring(3),
+				sKHZ = sAttrValue.substring(3),
 				nMHZ = parseInt(sMHZ),
 				nKHZ = parseInt(sKHZ) / 5,
 				nChkSum = nMHZ ^ nKHZ,
