@@ -167,7 +167,36 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 		FILE_ATTRIBUTE_NORMAL,
 		NULL);
 	_ASSERT(INVALID_HANDLE_VALUE != hPort1);
+	/*
+	* bstrCommand enthaelt die hexcodierten bytes space delemitted
+	* die codierung wird aktuell NICHT durch ein PreFix z.B. '0x' uebertragen
+	*
+	* Hinweis(e):
+	* - als generischen ansatz koennte man hier ein ByteArray uebergeben
+	*   da Arrays im JavaScript Objecte sind koennen wir NICHT EINAFCH via C/C++ darauf zugreifen
+	*/
 	CComBSTR bstrCommand = GetElementText(_T("command"));
+	CString strCommand(bstrCommand); // die variable koennen wir uns durch _tcstok_s() sparen
+	BYTE rgCommand[0x100];
+	int iStart = 0;
+	unsigned int uiIndex = 0;
+	CString strToken = strCommand.Tokenize(_T(" "), iStart);
+	for (uiIndex = 0; strToken.GetLength(); uiIndex += 1)
+	{
+		rgCommand[uiIndex] = _tcstol(strToken, NULL, 16);
+		strToken = strCommand.Tokenize(_T(" "), iStart);
+	}
+
+	/*
+	* die 5 ist natuerlich NICHT allgemein gueltig
+	* nur fuer hex-codiert mit PreFix 0xFF UND finalem space
+	_ASSERT(uiIndex == strCommand.GetLength() / 5);
+	*/
+
+	DWORD dwNumBytesWritten;
+	BOOL bRetC = ::WriteFile(hPort1, rgCommand, uiIndex, &dwNumBytesWritten, NULL);
+	_ASSERT(TRUE == bRetC);
+	_ASSERT(uiIndex == dwNumBytesWritten);
 	::CloseHandle(hPort1);
 	return S_OK;
 }

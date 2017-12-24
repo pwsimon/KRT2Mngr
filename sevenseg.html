@@ -59,8 +59,9 @@ $(document).ready(function () {
 			rgCommand.push(nChkSum);
 
 			// einen string fuer die anzeige, hex codiert, space delemitted
-			rgCommand.forEach (function (curVal) {
-				sCommand += curVal.toString(16);
+			rgCommand.forEach(function (curVal) {
+				sCommand += "0x";
+				sCommand += 15 < curVal ? curVal.toString(16) : "0" + curVal.toString(16); // ensure 2 Digits
 				sCommand += " ";
 			});
 
