@@ -74,7 +74,11 @@ BOOL CCOMHostDlg::OnInitDialog()
 	*/
 	m_nHtmlResID = 0;
 	// m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
-	m_strCurrentUrl = _T("http://localhost/krt2mngr/sevenseg.html"); // need browser_emulation
+	m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
+	CCommandLineInfo cmdLI;
+	theApp.ParseCommandLine(cmdLI);
+	if (CCommandLineInfo::FileOpen == cmdLI.m_nShellCommand)
+		m_strCurrentUrl = cmdLI.m_strFileName;
 	CDHtmlDialog::OnInitDialog();
 	// Navigate(_T("http://localhost/krt2mngr/sevenseg.html"));
 
