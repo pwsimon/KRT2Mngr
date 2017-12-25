@@ -1,4 +1,3 @@
-
 // BTHostDlg.cpp : implementation file
 //
 
@@ -11,9 +10,7 @@
 #define new DEBUG_NEW
 #endif
 
-
 // CAboutDlg dialog used for App About
-
 class CAboutDlg : public CDialogEx
 {
 public:
@@ -46,12 +43,10 @@ END_MESSAGE_MAP()
 
 
 // CBTHostDlg dialog
-
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
-	DHTML_EVENT_ONCLICK(_T("ButtonOK"), OnButtonOK)
+	DHTML_EVENT_ONCLICK(_T("btnCheck"), OnCheck)
 	DHTML_EVENT_ONCLICK(_T("ButtonCancel"), OnButtonCancel)
 END_DHTML_EVENT_MAP()
-
 
 CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	: CDHtmlDialog(IDD_BTHOST_DIALOG, IDR_HTML_BTHOST_DIALOG, pParent)
@@ -68,9 +63,7 @@ BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
 	ON_WM_SYSCOMMAND()
 END_MESSAGE_MAP()
 
-
 // CBTHostDlg message handlers
-
 BOOL CBTHostDlg::OnInitDialog()
 {
 	CDHtmlDialog::OnInitDialog();
@@ -121,7 +114,6 @@ void CBTHostDlg::OnSysCommand(UINT nID, LPARAM lParam)
 // If you add a minimize button to your dialog, you will need the code below
 //  to draw the icon.  For MFC applications using the document/view model,
 //  this is automatically done for you by the framework.
-
 void CBTHostDlg::OnPaint()
 {
 	if (IsIconic())
@@ -154,9 +146,29 @@ HCURSOR CBTHostDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
-HRESULT CBTHostDlg::OnButtonOK(IHTMLElement* /*pElement*/)
+HRESULT CBTHostDlg::OnCheck(IHTMLElement* /*pElement*/)
 {
-	OnOK();
+	BLUETOOTH_FIND_RADIO_PARAMS findradioParams;
+	memset(&findradioParams, 0x00, sizeof(findradioParams));
+	findradioParams.dwSize = sizeof(findradioParams);
+	HANDLE hRadio = NULL;
+	HBLUETOOTH_RADIO_FIND hbtrf = ::BluetoothFindFirstRadio(&findradioParams, &hRadio);
+	BOOL bRetC = NULL == hbtrf ? FALSE : TRUE;
+	while (bRetC)
+	{
+		BLUETOOTH_RADIO_INFO RadioInfo;
+		::ZeroMemory(&RadioInfo, sizeof(RadioInfo));
+		RadioInfo.dwSize = sizeof(RadioInfo);
+		DWORD dwRetC = ::BluetoothGetRadioInfo(hRadio, &RadioInfo);
+
+		::MessageBox(NULL, RadioInfo.szName, _T("enum BT"), MB_OK);
+		bRetC = ::BluetoothFindNextRadio(hbtrf, &hRadio);
+		::CloseHandle(hRadio);
+	}
+
+	if(hbtrf)
+		::BluetoothFindRadioClose(hbtrf);
+
 	return S_OK;
 }
 

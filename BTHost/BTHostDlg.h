@@ -1,9 +1,7 @@
-
 // BTHostDlg.h : header file
 //
 
 #pragma once
-
 
 // CBTHostDlg dialog
 class CBTHostDlg : public CDHtmlDialog
@@ -20,7 +18,7 @@ public:
 	protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV support
 
-	HRESULT OnButtonOK(IHTMLElement *pElement);
+	HRESULT OnCheck(IHTMLElement *pElement);
 	HRESULT OnButtonCancel(IHTMLElement *pElement);
 
 // Implementation

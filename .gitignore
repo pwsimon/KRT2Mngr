@@ -9,3 +9,5 @@
 *.opendb
 *.ipch
 *.user
+*.suo
+/BTHost/Debug
