@@ -162,8 +162,12 @@ HCURSOR CCOMHostDlg::OnQueryDragIcon()
 
 HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 {
-	// Serial Port Sample, https://code.msdn.microsoft.com/windowsdesktop/Serial-Port-Sample-e8accf30/sourcecode?fileId=67164&pathId=1394200469
-	HANDLE hPort1 = ::CreateFile(TEXT("COM1"), // Name of the port
+	/*
+	* Serial Port Sample, https://code.msdn.microsoft.com/windowsdesktop/Serial-Port-Sample-e8accf30/sourcecode?fileId=67164&pathId=1394200469
+	* COM1 = \Device\RdpDrPort\;COM1:1\tsclient\COM1
+	* auf ASUSPROI5 ist COM5 ein virtueller (ausgehender) Port mit SSP zu KRT21885
+	*/
+	HANDLE hPort1 = ::CreateFile(TEXT("COM5"), // Name of the port
 		GENERIC_READ | GENERIC_WRITE, // Access (read-write) mode
 		0,
 		NULL,
