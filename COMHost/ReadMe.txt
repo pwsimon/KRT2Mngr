@@ -6,6 +6,7 @@ variante 1: (COMHost.exe) via COM Port,
 variante 2: (BTHost.exe) echter zugriff ueber die BT API
 
 History: (der letzte/neueste eintrag steht oben)
+- Command "R" fuer 1.3.3 Set passive frequency (MHz,KHz) & name, padding bytes fuer den Stationsnamen
 - der URL fuer die GUI ist ueber den ersten CommandLine Parameter konfigurierbar (EINFACHES Deployment)
 - ToDo: Commandos von COM Port lesen
 - ToDo: COM Port configurierbar, "COM2"

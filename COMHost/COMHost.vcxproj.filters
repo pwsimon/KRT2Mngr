@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="HTML">
+      <UniqueIdentifier>{791edf8e-cf0e-47db-aa58-7c8f90b69efe}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
@@ -49,6 +52,9 @@
     <None Include="COMHost.htm" />
     <None Include="res\COMHost.rc2">
       <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\sevenseg.html">
+      <Filter>HTML</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
