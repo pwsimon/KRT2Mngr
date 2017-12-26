@@ -32,7 +32,8 @@ $(document).ready(function () {
 		{ nFrequence: 120100, sName: "KemptenD" },
 		{ nFrequence: 126025, sName: "Agathazl" },
 		{ nFrequence: 118500, sName: "Memmingn" },
-		{ nFrequence: 122500, sName: "Paterzel" }
+		{ nFrequence: 122500, sName: "Paterzel" },
+		{ nFrequence: 126900, sName: "PETER" }
 	];
 
 	rgStations.forEach(function (curVal) {
@@ -50,12 +51,26 @@ $(document).ready(function () {
 				nMHZ = parseInt(sMHZ),
 				nKHZ = parseInt(sKHZ) / 5,
 				nChkSum = nMHZ ^ nKHZ,
-				rgCommand = [2, "U".charCodeAt(0), nKHZ ], // wir bauen ein Array (most generic)
+
+				/*
+				* wir bauen ein Array (most generic)
+				* 1.3.3 Set passive frequency (MHz,KHz) & name
+				*/
+				rgCommand = [2, "R".charCodeAt(0), nMHZ, nKHZ],
 				nIndex = 0,
 				sCommand = "";
 
 			for (nIndex; nIndex < resultText.length; nIndex++)
 				rgCommand.push(resultText.charCodeAt(nIndex));
+
+			/*
+			* ensure TextLength is 8 Byte
+			* String.prototype.padEnd(), https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/padEnd
+			* sorry not for Internet Explorer
+			*/
+			for (nIndex = resultText.length; nIndex <= 7 ;nIndex++)
+				rgCommand.push(" ".charCodeAt(0));
+
 			rgCommand.push(nChkSum);
 
 			// einen string fuer die anzeige, hex codiert, space delemitted

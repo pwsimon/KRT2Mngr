@@ -21,8 +21,8 @@ public:
 	enum { IDD = IDD_ABOUTBOX };
 #endif
 
-	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+protected:
+	virtual void DoDataExchange(CDataExchange* pDX); // DDX/DDV support
 
 // Implementation
 protected:
@@ -44,7 +44,7 @@ END_MESSAGE_MAP()
 // CCOMHostDlg dialog
 BEGIN_DHTML_EVENT_MAP(CCOMHostDlg)
 	DHTML_EVENT_ONCLICK(_T("btnSend"), OnSend)
-	DHTML_EVENT_ONCLICK(_T("ButtonCancel"), OnButtonCancel)
+	DHTML_EVENT_ONCLICK(_T("btnRead"), OnRead)
 END_DHTML_EVENT_MAP()
 
 CCOMHostDlg::CCOMHostDlg(CWnd* pParent /*=NULL*/)
@@ -103,13 +103,13 @@ BOOL CCOMHostDlg::OnInitDialog()
 	}
 
 	// Set the icon for this dialog.  The framework does this automatically
-	//  when the application's main window is not a dialog
-	SetIcon(m_hIcon, TRUE);			// Set big icon
-	SetIcon(m_hIcon, FALSE);		// Set small icon
+	// when the application's main window is not a dialog
+	SetIcon(m_hIcon, TRUE); // Set big icon
+	SetIcon(m_hIcon, FALSE); // Set small icon
 
 	// TODO: Add extra initialization here
 
-	return TRUE;  // return TRUE  unless you set the focus to a control
+	return TRUE; // return TRUE  unless you set the focus to a control
 }
 
 void CCOMHostDlg::OnSysCommand(UINT nID, LPARAM lParam)
@@ -168,7 +168,7 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	* auf ASUSPROI5 ist COM5 ein virtueller (ausgehender) Port mit SSP zu KRT21885
 	*/
 	HANDLE hPort1 = ::CreateFile(TEXT("COM5"), // Name of the port
-		GENERIC_READ | GENERIC_WRITE, // Access (read-write) mode
+		GENERIC_WRITE, // Access (read-write) mode
 		0,
 		NULL,
 		OPEN_EXISTING,
@@ -177,7 +177,7 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	_ASSERT(INVALID_HANDLE_VALUE != hPort1);
 	/*
 	* bstrCommand enthaelt die hexcodierten bytes space delemitted
-	* die codierung wird aktuell NICHT durch ein PreFix z.B. '0x' uebertragen
+	* die codierung wird aktuell mit einem PreFix z.B. '0x' uebertragen
 	*
 	* Hinweis(e):
 	* - als generischen ansatz koennte man hier ein ByteArray uebergeben
@@ -209,8 +209,34 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	return S_OK;
 }
 
-HRESULT CCOMHostDlg::OnButtonCancel(IHTMLElement* /*pElement*/)
+#define KRT2INPUT _T("krt2input.bin")
+// #define KRT2INPUT _T("COM5")
+HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 {
-	OnCancel();
+	HANDLE hPort1 = ::CreateFile(KRT2INPUT, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+	_ASSERT(INVALID_HANDLE_VALUE != hPort1);
+	BYTE rgCommand[0xff];
+	::ZeroMemory(rgCommand, 0xff);
+	DWORD dwNumberOfBytesRead = 0; // not used for OVERLAPPED IO
+	::ZeroMemory(&m_Overlapped, sizeof(OVERLAPPED));
+	m_Overlapped.hEvent = ::CreateEvent(NULL, TRUE, FALSE, NULL); // non signaled
+	m_Overlapped.Internal;
+	m_Overlapped.Offset;
+	m_Overlapped.Pointer; // = rgCommand;
+	if (FALSE == ::ReadFile(hPort1, rgCommand, 13, NULL, &m_Overlapped))
+	{
+		DWORD dwLastError = ::GetLastError(); // ERROR_IO_PENDING
+		// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+		BOOL bRetC = ::GetOverlappedResult(hPort1, &m_Overlapped, &dwNumberOfBytesRead, TRUE);
+	}
+	// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+
+	// m_hThread = (HANDLE)_beginthreadex(NULL, 0, CCOMHostDlg::COMReadThread, this, 0, NULL);
+	::CloseHandle(hPort1);
 	return S_OK;
+}
+
+/*static*/ unsigned int CCOMHostDlg::COMReadThread(void* arguments)
+{
+	return 0;
 }
