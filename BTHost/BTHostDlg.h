@@ -32,4 +32,11 @@ protected:
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
+
+private:
+	HRESULT enumBTRadio(HANDLE& hRadio);
+	HRESULT enumBTDevices(HANDLE hRadio);
+	HRESULT enumBTServices(LPCWSTR szDeviceAddress, GUID serviceClass);
+	static HRESULT BTAddressToString(BLUETOOTH_ADDRESS* pBTAddr, BSTR* pbstrAddress);
+	static HRESULT BTAddressToString(PSOCKADDR_BTH lpAddress, BSTR* pbstrAddress);
 };
