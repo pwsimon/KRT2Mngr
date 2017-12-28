@@ -8,7 +8,7 @@ class CCOMHostDlg : public CDHtmlDialog
 {
 // Construction
 public:
-	CCOMHostDlg(CWnd* pParent = NULL);	// standard constructor
+	CCOMHostDlg(CWnd* pParent = NULL); // standard constructor
 
 // Dialog Data
 #ifdef AFX_DESIGN_TIME
@@ -24,6 +24,7 @@ protected:
 // Implementation
 protected:
 	HICON m_hIcon;
+	HANDLE m_hCOMx;
 	OVERLAPPED m_Overlapped;
 	HANDLE m_hThread;
 	static unsigned int __stdcall COMReadThread(void* arguments);
@@ -33,6 +34,7 @@ protected:
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
+	afx_msg void OnClose();
 
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()

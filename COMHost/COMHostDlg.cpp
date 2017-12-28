@@ -51,6 +51,7 @@ CCOMHostDlg::CCOMHostDlg(CWnd* pParent /*=NULL*/)
 	: CDHtmlDialog(IDD_COMHOST_DIALOG, IDR_HTML_COMHOST_DIALOG, pParent)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+	m_hCOMx = INVALID_HANDLE_VALUE;
 }
 
 void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
@@ -60,6 +61,7 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 
 BEGIN_MESSAGE_MAP(CCOMHostDlg, CDHtmlDialog)
 	ON_WM_SYSCOMMAND()
+	ON_WM_CLOSE()
 END_MESSAGE_MAP()
 
 // CCOMHostDlg message handlers
@@ -160,21 +162,43 @@ HCURSOR CCOMHostDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+void CCOMHostDlg::OnClose()
+{
+	if (INVALID_HANDLE_VALUE != m_hCOMx)
+	{
+		::CloseHandle(m_hCOMx);
+		m_hCOMx = INVALID_HANDLE_VALUE;
+	}
+
+	CDHtmlDialog::OnClose();
+}
+
+#define KRT2INPUT _T("krt2input.bin")
+// #define KRT2INPUT _T("COM5")
 HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 {
 	/*
 	* Serial Port Sample, https://code.msdn.microsoft.com/windowsdesktop/Serial-Port-Sample-e8accf30/sourcecode?fileId=67164&pathId=1394200469
 	* COM1 = \Device\RdpDrPort\;COM1:1\tsclient\COM1
 	* auf ASUSPROI5 ist COM5 ein virtueller (ausgehender) Port mit SSP zu KRT21885
+	*
+	* Communications Resources
+	* The CreateFile function can create a handle to a communications resource, such as the serial port COM1.
+	* For communications resources, the dwCreationDisposition parameter must be OPEN_EXISTING, the dwShareMode parameter must be zero (exclusive access), and the hTemplateFile parameter must be NULL.
+	* Read, write, or read/write access can be specified, and the handle can be opened for overlapped I/O.
+	* To specify a COM port number greater than 9, use the following syntax: "\\.\COM10". This syntax works for all port numbers and hardware that allows COM port numbers to be specified.
+	* For more information about communications, see:
+	*   Communications, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363196(v=vs.85).aspx
+	*
+	* dummerweise bleibt bei der commandofolge CreateFile/CloseHandle irgendetwas haengen
+	* so das ich die commandofolge kein zweites mal ausfuehren kann???
 	*/
-	HANDLE hPort1 = ::CreateFile(TEXT("COM5"), // Name of the port
-		GENERIC_WRITE, // Access (read-write) mode
-		0,
-		NULL,
-		OPEN_EXISTING,
-		FILE_ATTRIBUTE_NORMAL,
-		NULL);
-	_ASSERT(INVALID_HANDLE_VALUE != hPort1);
+	if (INVALID_HANDLE_VALUE == m_hCOMx)
+		m_hCOMx = ::CreateFile(TEXT("COM5"), GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	_ASSERT(INVALID_HANDLE_VALUE != m_hCOMx);
+	if (INVALID_HANDLE_VALUE == m_hCOMx)
+		return E_FAIL;
+
 	/*
 	* bstrCommand enthaelt die hexcodierten bytes space delemitted
 	* die codierung wird aktuell mit einem PreFix z.B. '0x' uebertragen
@@ -202,15 +226,12 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	*/
 
 	DWORD dwNumBytesWritten;
-	BOOL bRetC = ::WriteFile(hPort1, rgCommand, uiIndex, &dwNumBytesWritten, NULL);
+	BOOL bRetC = ::WriteFile(m_hCOMx, rgCommand, uiIndex, &dwNumBytesWritten, NULL);
 	_ASSERT(TRUE == bRetC);
 	_ASSERT(uiIndex == dwNumBytesWritten);
-	::CloseHandle(hPort1);
 	return S_OK;
 }
 
-#define KRT2INPUT _T("krt2input.bin")
-// #define KRT2INPUT _T("COM5")
 HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 {
 	HANDLE hPort1 = ::CreateFile(KRT2INPUT, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
