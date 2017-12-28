@@ -17,6 +17,7 @@ public:
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX); // DDX/DDV support
+	HRESULT ShowLastError(LPCTSTR szCaption);
 
 	HRESULT OnSend(IHTMLElement* pElement);
 	HRESULT OnRead(IHTMLElement* pElement);

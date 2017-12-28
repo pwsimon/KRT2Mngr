@@ -194,10 +194,25 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	* so das ich die commandofolge kein zweites mal ausfuehren kann???
 	*/
 	if (INVALID_HANDLE_VALUE == m_hCOMx)
+	{
 		m_hCOMx = ::CreateFile(TEXT("COM5"), GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	_ASSERT(INVALID_HANDLE_VALUE != m_hCOMx);
-	if (INVALID_HANDLE_VALUE == m_hCOMx)
-		return E_FAIL;
+		if (INVALID_HANDLE_VALUE == m_hCOMx)
+		{
+			ShowLastError(_T("::CreateFile() Failed"));
+			return E_FAIL;
+		}
+	}
+
+	DCB dcb;
+	::ZeroMemory(&dcb, sizeof(DCB));
+	dcb.DCBlength = sizeof(DCB);
+	BOOL bRetC = ::GetCommState(m_hCOMx, &dcb);
+
+	/* COMMPROP CommProp;
+	bRetC = ::GetCommProperties(m_hCOMx, &CommProp);
+
+	COMMTIMEOUTS CommTimeouts;
+	bRetC = ::GetCommTimeouts(m_hCOMx, &CommTimeouts); */
 
 	/*
 	* bstrCommand enthaelt die hexcodierten bytes space delemitted
@@ -226,10 +241,25 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	*/
 
 	DWORD dwNumBytesWritten;
-	BOOL bRetC = ::WriteFile(m_hCOMx, rgCommand, uiIndex, &dwNumBytesWritten, NULL);
-	_ASSERT(TRUE == bRetC);
-	_ASSERT(uiIndex == dwNumBytesWritten);
+	if (::WriteFile(m_hCOMx, rgCommand, uiIndex, &dwNumBytesWritten, NULL))
+		_ASSERT(uiIndex == dwNumBytesWritten);
+	else
+		ShowLastError(_T("::WriteFile() Failed"));
+
+	DWORD dwErrors = 0;
+	COMSTAT COMStat;
+	if (!::ClearCommError(m_hCOMx, &dwErrors, &COMStat))
+		ShowLastError(_T("::ClearCommError() Failed"));
+
 	return S_OK;
+}
+
+HRESULT CCOMHostDlg::ShowLastError(LPCTSTR szCaption)
+{
+	CString strErrorMsg;
+	strErrorMsg.Format(_T("returned: 0x%.8x"), ::GetLastError());
+	::MessageBox(NULL, strErrorMsg, szCaption, MB_OK);
+	return NOERROR;
 }
 
 HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
