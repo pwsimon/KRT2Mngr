@@ -6,6 +6,7 @@ variante 1: (COMHost.exe) via COM Port,
 variante 2: (BTHost.exe) echter zugriff ueber die BT API
 
 History: (der letzte/neueste eintrag steht oben)
+- funktioniert ganz leidlich mit einem File base input ("krt2input.bin") offensichtlich funktioniert ein/dieser COM Port nicht mit OVERLAPPED
 - ShowLastError fuer CreateFile/WriteFile und ClearCommError wobei ich befuerchte mit einem ECHTEN COM Port gibt es keine Probleme
 - wir oeffnen den COM port nur EINMAL und speichern ihn als InstanceVariable so koennen wir MEHRERE commands abschicken
 - File Read (OVERLAPPED)

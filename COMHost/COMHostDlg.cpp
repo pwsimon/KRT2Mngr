@@ -47,11 +47,14 @@ BEGIN_DHTML_EVENT_MAP(CCOMHostDlg)
 	DHTML_EVENT_ONCLICK(_T("btnRead"), OnRead)
 END_DHTML_EVENT_MAP()
 
+OVERLAPPED s_Overlapped;
+
 CCOMHostDlg::CCOMHostDlg(CWnd* pParent /*=NULL*/)
 	: CDHtmlDialog(IDD_COMHOST_DIALOG, IDR_HTML_COMHOST_DIALOG, pParent)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 	m_hCOMx = INVALID_HANDLE_VALUE;
+	m_hReadThread = INVALID_HANDLE_VALUE;
 }
 
 void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
@@ -74,7 +77,7 @@ BOOL CCOMHostDlg::OnInitDialog()
 	*     COMHost.cpp(44): CCOMHostApp::InitInstance()
 	*     HKEY_CURRENT_USER\SOFTWARE\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\COMHost.exe (REG_DWORD) 11000
 	*/
-	m_nHtmlResID = 0;
+	// m_nHtmlResID = 0;
 	// m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
 	m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
 	CCommandLineInfo cmdLI;
@@ -170,11 +173,50 @@ void CCOMHostDlg::OnClose()
 		m_hCOMx = INVALID_HANDLE_VALUE;
 	}
 
+	// ::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread, 5000, FALSE);
+	CCOMHostDlg::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread);
+	::CloseHandle(m_hReadThread);
+	m_hReadThread = INVALID_HANDLE_VALUE;
+	::CloseHandle(m_ReadThreadArgs.hEvtTerminate);
+	m_ReadThreadArgs.hEvtTerminate = INVALID_HANDLE_VALUE;
+	::CloseHandle(m_ReadThreadArgs.hCOMPort);
+	m_ReadThreadArgs.hCOMPort = INVALID_HANDLE_VALUE;
+	::CloseHandle(m_ReadThreadArgs.hEvtCOMPort);
+	m_ReadThreadArgs.hEvtCOMPort = INVALID_HANDLE_VALUE;
+
 	CDHtmlDialog::OnClose();
 }
 
-#define KRT2INPUT _T("krt2input.bin")
-// #define KRT2INPUT _T("COM5")
+/*static*/ DWORD CCOMHostDlg::SignalObjectAndWait(
+	HANDLE hEvtTerminate,
+	HANDLE hThread)
+{
+	if (INVALID_HANDLE_VALUE == hEvtTerminate)
+		return E_INVALIDARG;
+	if (INVALID_HANDLE_VALUE == hThread)
+		return E_INVALIDARG;
+
+	::SetEvent(hEvtTerminate);
+	const DWORD dwThreadTerminated = ::WaitForSingleObject(hThread, 5000);
+	if (WAIT_OBJECT_0 == dwThreadTerminated)
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("m_hReadThread signaled, Thread terminated\n"));
+	}
+
+	else if (WAIT_TIMEOUT == dwThreadTerminated)
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("WARNING: m_hReadThread NOT terminated in time\n"));
+	}
+
+	else if (WAIT_FAILED == dwThreadTerminated)
+		CCOMHostDlg::ShowLastError(_T("SignalObjectAndWait"));
+
+	return dwThreadTerminated;
+}
+
+// #define KRT2INPUT  _T("krt2input.bin")
+#define KRT2INPUT  _T("COM5")
+#define KRT2OUTPUT _T("COM5")
 HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 {
 	/*
@@ -195,10 +237,10 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	*/
 	if (INVALID_HANDLE_VALUE == m_hCOMx)
 	{
-		m_hCOMx = ::CreateFile(TEXT("COM5"), GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		m_hCOMx = ::CreateFile(KRT2OUTPUT, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (INVALID_HANDLE_VALUE == m_hCOMx)
 		{
-			ShowLastError(_T("::CreateFile() Failed"));
+			CCOMHostDlg::ShowLastError(_T("::CreateFile() Failed"));
 			return E_FAIL;
 		}
 	}
@@ -244,50 +286,127 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	if (::WriteFile(m_hCOMx, rgCommand, uiIndex, &dwNumBytesWritten, NULL))
 		_ASSERT(uiIndex == dwNumBytesWritten);
 	else
-		ShowLastError(_T("::WriteFile() Failed"));
+		CCOMHostDlg::ShowLastError(_T("::WriteFile() Failed"));
 
 	DWORD dwErrors = 0;
 	COMSTAT COMStat;
 	if (!::ClearCommError(m_hCOMx, &dwErrors, &COMStat))
-		ShowLastError(_T("::ClearCommError() Failed"));
+		CCOMHostDlg::ShowLastError(_T("::ClearCommError() Failed"));
 
 	return S_OK;
 }
 
-HRESULT CCOMHostDlg::ShowLastError(LPCTSTR szCaption)
+/*static*/ HRESULT CCOMHostDlg::ShowLastError(LPCTSTR szCaption)
 {
-	CString strErrorMsg;
-	strErrorMsg.Format(_T("returned: 0x%.8x"), ::GetLastError());
-	::MessageBox(NULL, strErrorMsg, szCaption, MB_OK);
+	const DWORD dwMessageId(::GetLastError());
+	CString strDesc;
+	DWORD dwRetC = ::FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM,
+		NULL,
+		dwMessageId,
+		LANG_SYSTEM_DEFAULT, // MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US)
+		strDesc.GetBufferSetLength(0xff), 0xff,
+		NULL); // _In_opt_ va_list *Arguments
+	strDesc.ReleaseBuffer();
+	CString strMsg;
+	strMsg.Format(_T("%s, returned: 0x%.8x"), dwMessageId);
+	::MessageBox(NULL, strMsg, szCaption, MB_OK);
 	return NOERROR;
 }
 
 HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 {
-	HANDLE hPort1 = ::CreateFile(KRT2INPUT, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
-	_ASSERT(INVALID_HANDLE_VALUE != hPort1);
-	BYTE rgCommand[0xff];
-	::ZeroMemory(rgCommand, 0xff);
-	DWORD dwNumberOfBytesRead = 0; // not used for OVERLAPPED IO
-	::ZeroMemory(&m_Overlapped, sizeof(OVERLAPPED));
-	m_Overlapped.hEvent = ::CreateEvent(NULL, TRUE, FALSE, NULL); // non signaled
-	m_Overlapped.Internal;
-	m_Overlapped.Offset;
-	m_Overlapped.Pointer; // = rgCommand;
-	if (FALSE == ::ReadFile(hPort1, rgCommand, 13, NULL, &m_Overlapped))
-	{
-		DWORD dwLastError = ::GetLastError(); // ERROR_IO_PENDING
-		// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
-		BOOL bRetC = ::GetOverlappedResult(hPort1, &m_Overlapped, &dwNumberOfBytesRead, TRUE);
-	}
-	// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+	m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2INPUT, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+	_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hCOMPort);
 
-	// m_hThread = (HANDLE)_beginthreadex(NULL, 0, CCOMHostDlg::COMReadThread, this, 0, NULL);
-	::CloseHandle(hPort1);
+	/*
+	*/
+	m_ReadThreadArgs.hEvtCOMPort = ::CreateEvent(NULL, TRUE, FALSE, NULL); // currently never signaled;
+	m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
+	m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CCOMHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
+
 	return S_OK;
 }
 
 /*static*/ unsigned int CCOMHostDlg::COMReadThread(void* arguments)
 {
+	struct _ReadThreadArg* pArgs = (struct _ReadThreadArg*) arguments;
+
+	BYTE rgCommand[0xff];
+	::ZeroMemory(rgCommand, 0xff);
+	::ZeroMemory(&s_Overlapped, sizeof(OVERLAPPED));
+	s_Overlapped.hEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL); // Auto reset, initial non signaled
+	s_Overlapped.Internal;
+	s_Overlapped.Offset;
+	s_Overlapped.Pointer;
+
+	_ASSERT(FALSE == ::ReadFile(pArgs->hCOMPort, rgCommand, 1, NULL, &s_Overlapped));
+	_ASSERT(ERROR_IO_PENDING == ::GetLastError());
+	HANDLE rgHandles[3] = { pArgs->hEvtTerminate, pArgs->hEvtCOMPort, s_Overlapped.hEvent };
+	while(TRUE)
+	{
+		DWORD dwEvent = ::WaitForMultipleObjects(_countof(rgHandles), rgHandles, FALSE, 10000);
+		if (WAIT_TIMEOUT == dwEvent)
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("run idle and continue loop\n"));
+			continue;
+		}
+
+		else if (WAIT_FAILED == dwEvent)
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("invalid arg, exit loop\n"));
+			break;
+		}
+
+		else if (WAIT_OBJECT_0 == dwEvent)
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("hEvtTerminate signaled, exit loop\n"));
+			break;
+		}
+
+		else if (WAIT_OBJECT_0 + 1 == dwEvent)
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("hEvtCOMPort sinaled, get status and continue\n"));
+			continue;
+		}
+
+		else if (WAIT_OBJECT_0 + 2 == dwEvent)
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("s_Overlapped.hEvent sinaled\n"));
+
+			// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+			DWORD dwNumberOfBytesRead = -1;
+			// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+			if (FALSE == ::GetOverlappedResult(pArgs->hCOMPort, &s_Overlapped, &dwNumberOfBytesRead, FALSE))
+			{
+				ATLTRACE2(atlTraceGeneral, 0, _T("  Port closed/EOF\n"));
+				DWORD dwError = ::GetLastError();
+				_ASSERT(ERROR_HANDLE_EOF == dwError);
+				break;
+			}
+
+			ATLTRACE2(atlTraceGeneral, 0, _T("  0x%.8x bytes received\n"), dwNumberOfBytesRead);
+
+			ATLTRACE2(atlTraceGeneral, 0, _T("  process 0x%.8x\n"), rgCommand[0]);
+			s_Overlapped.Offset += dwNumberOfBytesRead; // importand for filebased handles
+			// aber wie? unterscheidet sich ein COM handle. von dem kann ich ja UNENDLICH lesen
+			if (0xfe == s_Overlapped.Offset)
+			{
+				::ZeroMemory(rgCommand, 0xff);
+				break;
+			}
+
+			ATLTRACE2(atlTraceGeneral, 0, _T("  continue\n"));
+			_ASSERT(FALSE == ::ReadFile(pArgs->hCOMPort, rgCommand, 1, NULL, &s_Overlapped));
+			continue;
+		}
+
+		else
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("WAIT_ABANDONED_0, ...\n"));
+			break;
+		}
+	}
+
+	ATLTRACE2(atlTraceGeneral, 0, _T("Leave COMReadThread()\n"));
 	return 0;
 }

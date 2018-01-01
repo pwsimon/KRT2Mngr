@@ -17,7 +17,7 @@ public:
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX); // DDX/DDV support
-	HRESULT ShowLastError(LPCTSTR szCaption);
+	static HRESULT ShowLastError(LPCTSTR szCaption);
 
 	HRESULT OnSend(IHTMLElement* pElement);
 	HRESULT OnRead(IHTMLElement* pElement);
@@ -26,9 +26,14 @@ protected:
 protected:
 	HICON m_hIcon;
 	HANDLE m_hCOMx;
-	OVERLAPPED m_Overlapped;
-	HANDLE m_hThread;
+	struct _ReadThreadArg {
+		HANDLE hCOMPort;
+		HANDLE hEvtTerminate;
+		HANDLE hEvtCOMPort;
+	} m_ReadThreadArgs;
+	HANDLE m_hReadThread;
 	static unsigned int __stdcall COMReadThread(void* arguments);
+	static DWORD SignalObjectAndWait(HANDLE hEvtTerminate, HANDLE hThread);
 
 	// Generated message map functions
 	virtual BOOL OnInitDialog();
