@@ -33,6 +33,8 @@ protected:
 	} m_ReadThreadArgs;
 	HANDLE m_hReadThread;
 	static unsigned int __stdcall COMReadThread(void* arguments);
+	static HRESULT DriveStateMachine(BYTE byte, BOOL bAsynchronous);
+	static enum _KRT2StateMachine DriveCommand();
 	static DWORD SignalObjectAndWait(HANDLE hEvtTerminate, HANDLE hThread);
 
 	// Generated message map functions

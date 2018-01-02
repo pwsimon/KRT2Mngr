@@ -11,3 +11,4 @@
 *.user
 *.suo
 /BTHost/Debug
+/BTSample

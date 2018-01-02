@@ -214,8 +214,8 @@ void CCOMHostDlg::OnClose()
 	return dwThreadTerminated;
 }
 
-// #define KRT2INPUT  _T("krt2input.bin")
-#define KRT2INPUT  _T("COM5")
+#define KRT2INPUT  _T("krt2input.bin")
+// #define KRT2INPUT  _T("COM5")
 #define KRT2OUTPUT _T("COM5")
 HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 {
@@ -315,7 +315,8 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 
 HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 {
-	m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2INPUT, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+	const DWORD dwFlags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED; // fuer "COM<Port>" ist das FILE_ATTRIBUTE_NORMAL evtl. ueberfluessig
+	m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2INPUT, GENERIC_READ, 0, NULL, OPEN_EXISTING, dwFlags, NULL);
 	_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hCOMPort);
 
 	/*
@@ -331,82 +332,229 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 {
 	struct _ReadThreadArg* pArgs = (struct _ReadThreadArg*) arguments;
 
-	BYTE rgCommand[0xff];
-	::ZeroMemory(rgCommand, 0xff);
+	BYTE rgCommand[0x01]; // wir muessen BYTE weise lesen denn es gibt auch KRT2 commands die nuer EIN BYTE lang sind z.B. 'S'
+	::ZeroMemory(rgCommand, _countof(rgCommand));
 	::ZeroMemory(&s_Overlapped, sizeof(OVERLAPPED));
-	s_Overlapped.hEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL); // Auto reset, initial non signaled
+	s_Overlapped.hEvent = ::CreateEvent(NULL, TRUE, FALSE, NULL); // manual reset is required for overlapped I/O
 	s_Overlapped.Internal;
 	s_Overlapped.Offset;
 	s_Overlapped.Pointer;
 
-	_ASSERT(FALSE == ::ReadFile(pArgs->hCOMPort, rgCommand, 1, NULL, &s_Overlapped));
-	_ASSERT(ERROR_IO_PENDING == ::GetLastError());
 	HANDLE rgHandles[3] = { pArgs->hEvtTerminate, pArgs->hEvtCOMPort, s_Overlapped.hEvent };
 	while(TRUE)
 	{
-		DWORD dwEvent = ::WaitForMultipleObjects(_countof(rgHandles), rgHandles, FALSE, 10000);
-		if (WAIT_TIMEOUT == dwEvent)
+		if (FALSE == ::ReadFile(pArgs->hCOMPort, rgCommand, 1, NULL, &s_Overlapped))
 		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("run idle and continue loop\n"));
-			continue;
-		}
-
-		else if (WAIT_FAILED == dwEvent)
-		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("invalid arg, exit loop\n"));
-			break;
-		}
-
-		else if (WAIT_OBJECT_0 == dwEvent)
-		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("hEvtTerminate signaled, exit loop\n"));
-			break;
-		}
-
-		else if (WAIT_OBJECT_0 + 1 == dwEvent)
-		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("hEvtCOMPort sinaled, get status and continue\n"));
-			continue;
-		}
-
-		else if (WAIT_OBJECT_0 + 2 == dwEvent)
-		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("s_Overlapped.hEvent sinaled\n"));
-
-			// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
-			DWORD dwNumberOfBytesRead = -1;
-			// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
-			if (FALSE == ::GetOverlappedResult(pArgs->hCOMPort, &s_Overlapped, &dwNumberOfBytesRead, FALSE))
+			_ASSERT(ERROR_IO_PENDING == ::GetLastError());
+			const DWORD dwEvent = ::WaitForMultipleObjects(_countof(rgHandles), rgHandles, FALSE, 10000);
+			if (WAIT_TIMEOUT == dwEvent)
 			{
-				ATLTRACE2(atlTraceGeneral, 0, _T("  Port closed/EOF\n"));
-				DWORD dwError = ::GetLastError();
-				_ASSERT(ERROR_HANDLE_EOF == dwError);
+				ATLTRACE2(atlTraceGeneral, 0, _T("run idle and continue loop\n"));
+				continue;
+			}
+
+			else if (WAIT_FAILED == dwEvent)
+			{
+				ATLTRACE2(atlTraceGeneral, 0, _T("invalid arg, exit loop\n"));
 				break;
 			}
 
-			ATLTRACE2(atlTraceGeneral, 0, _T("  0x%.8x bytes received\n"), dwNumberOfBytesRead);
-
-			ATLTRACE2(atlTraceGeneral, 0, _T("  process 0x%.8x\n"), rgCommand[0]);
-			s_Overlapped.Offset += dwNumberOfBytesRead; // importand for filebased handles
-			// aber wie? unterscheidet sich ein COM handle. von dem kann ich ja UNENDLICH lesen
-			if (0xfe == s_Overlapped.Offset)
+			else if (WAIT_OBJECT_0 == dwEvent)
 			{
-				::ZeroMemory(rgCommand, 0xff);
+				ATLTRACE2(atlTraceGeneral, 0, _T("hEvtTerminate signaled, exit loop\n"));
 				break;
 			}
 
-			ATLTRACE2(atlTraceGeneral, 0, _T("  continue\n"));
-			_ASSERT(FALSE == ::ReadFile(pArgs->hCOMPort, rgCommand, 1, NULL, &s_Overlapped));
-			continue;
-		}
+			else if (WAIT_OBJECT_0 + 1 == dwEvent)
+			{
+				ATLTRACE2(atlTraceGeneral, 0, _T("hEvtCOMPort signaled, get status and continue\n"));
+				continue;
+			}
 
+			else if (WAIT_OBJECT_0 + 2 == dwEvent)
+			{
+				ATLTRACE2(atlTraceGeneral, 1, _T("s_Overlapped.hEvent signaled\n"));
+
+				// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+				DWORD dwNumberOfBytesRead = -1;
+				// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+				if (FALSE == ::GetOverlappedResult(pArgs->hCOMPort, &s_Overlapped, &dwNumberOfBytesRead, FALSE))
+				{
+					ATLTRACE2(atlTraceGeneral, 0, _T("  Port closed/EOF\n"));
+					DWORD dwError = ::GetLastError();
+					_ASSERT(ERROR_HANDLE_EOF == dwError);
+					break;
+				}
+
+				ATLTRACE2(atlTraceGeneral, 1, _T("  0x%.8x bytes received\n"), dwNumberOfBytesRead);
+				/*
+				* A common mistake in overlapped I/O is to reuse an OVERLAPPED structure before the previous overlapped operation is completed.
+				* If a new overlapped operation is issued before a previous operation is completed, a new OVERLAPPED structure must be allocated for it.
+				* A new manual-reset event for the hEvent member of the OVERLAPPED structure must also be created.
+				* Once an overlapped operation is complete, the OVERLAPPED structure and its event are free for reuse.
+				*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
+				*/
+				s_Overlapped.Offset += dwNumberOfBytesRead;
+
+				ATLTRACE2(atlTraceGeneral, 1, _T("  process 0x%.8x\n"), rgCommand[0]);
+				CCOMHostDlg::DriveStateMachine(rgCommand[0], TRUE);
+
+				ATLTRACE2(atlTraceGeneral, 1, _T("  continue\n"));
+				continue;
+			}
+
+			else
+			{
+				ATLTRACE2(atlTraceGeneral, 0, _T("WAIT_ABANDONED_0, ...\n"));
+				break;
+			}
+
+		}
 		else
 		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("WAIT_ABANDONED_0, ...\n"));
-			break;
+			/*
+			* If an operation is completed immediately, an application needs to be ready to continue processing normally.
+			*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
+			*/
+			CCOMHostDlg::DriveStateMachine(rgCommand[0], FALSE);
 		}
 	}
 
 	ATLTRACE2(atlTraceGeneral, 0, _T("Leave COMReadThread()\n"));
 	return 0;
+}
+
+enum _KRT2StateMachine
+{
+	END,
+	WAIT_FOR_STX,
+	WAIT_FOR_CMD,
+	WAIT_FOR_MHZ,
+	WAIT_FOR_kHZ,
+	WAIT_FOR_N0,
+	WAIT_FOR_N1,
+	WAIT_FOR_N2,
+	WAIT_FOR_N3,
+	WAIT_FOR_N4,
+	WAIT_FOR_N5,
+	WAIT_FOR_N6,
+	WAIT_FOR_N7,
+	WAIT_FOR_MNR,
+	WAIT_FOR_CHK
+} s_state = WAIT_FOR_STX;
+enum _KRT2StateMachine const* s_pSequence = NULL;
+enum _KRT2StateMachine const* s_pCurrentCmd = NULL;
+/*
+* 1.2 Out-going strings (from Radio after changing on panel):
+* MultiByte Commands
+*/
+const enum _KRT2StateMachine s_U121[13] = { (enum _KRT2StateMachine)'U', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_N3, WAIT_FOR_N4, WAIT_FOR_N5, WAIT_FOR_N6, WAIT_FOR_N7, WAIT_FOR_CHK, END };
+const enum _KRT2StateMachine s_R122[14] = { (enum _KRT2StateMachine)'R', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_N3, WAIT_FOR_N4, WAIT_FOR_N5, WAIT_FOR_N6, WAIT_FOR_N7, WAIT_FOR_MNR, WAIT_FOR_CHK, END };
+const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, END }; // ToDo:
+BYTE s_rgValues[0x10]; // hier stehen die werte der stellungsparameter
+/*static*/ HRESULT CCOMHostDlg::DriveStateMachine(
+	BYTE byte,
+	BOOL bAsynchronous)
+{
+	if (bAsynchronous)
+		ATLTRACE2(atlTraceGeneral, 1, _T("  process result from asynchronous read 0x%.8x\n"), byte);
+	else
+		ATLTRACE2(atlTraceGeneral, 1, _T("  process result from synchronous read 0x%.8x\n"), byte);
+
+	switch (s_state)
+	{
+	case WAIT_FOR_STX:
+		if (0x02 == byte) s_state = WAIT_FOR_CMD; break;
+		// keep this state until next 'stx'
+		break;
+	case WAIT_FOR_CMD:
+		/*
+		* SingleByte commands (1.2.8 Status reports)
+		*/
+		if ('B' == byte) // low BATT
+			s_state = WAIT_FOR_STX;
+
+		else if ('D' == byte) // release low BATT
+			s_state = WAIT_FOR_STX;
+
+		else if ('J' == byte) // RX
+			s_state = WAIT_FOR_STX;
+
+		else if ('V' == byte) // release RX
+			s_state = WAIT_FOR_STX;
+
+		else if ('O' == byte) // 1.2.6 DUAL-mode on
+			s_state = WAIT_FOR_STX;
+
+		else if ('o' == byte) // 1.2.7 DUAL-mode off
+			s_state = WAIT_FOR_STX;
+
+		// MultiByte commands
+		else if ('U' == byte)
+		{
+			s_pCurrentCmd = s_pSequence = s_U121;
+			s_state = *++s_pSequence; // skip command id
+		}
+
+		else if ('R' == byte)
+		{
+			s_pCurrentCmd = s_pSequence = s_R122;
+			s_state = *++s_pSequence; // skip command id
+		}
+
+		else
+			s_state = WAIT_FOR_STX; // unknown command
+
+		break;
+	case WAIT_FOR_MHZ:
+		s_state = DriveCommand();
+		break;
+	case WAIT_FOR_kHZ:
+		s_state = DriveCommand();
+		break;
+	case WAIT_FOR_N0:
+		s_state = DriveCommand();
+		break;
+	case WAIT_FOR_N1:
+		s_state = DriveCommand();
+		break;
+	case WAIT_FOR_N2:
+		s_state = DriveCommand();
+		break;
+	case WAIT_FOR_N3:
+		s_state = DriveCommand();
+		break;
+	case WAIT_FOR_N4:
+		s_state = DriveCommand();
+		break;
+	case WAIT_FOR_N5:
+		s_state = DriveCommand();
+		break;
+	case WAIT_FOR_N6:
+		s_state = DriveCommand();
+		break;
+	case WAIT_FOR_N7:
+		s_state = DriveCommand();
+		break;
+	case WAIT_FOR_MNR:
+		s_state = DriveCommand();
+		break;
+	case WAIT_FOR_CHK:
+		s_state = DriveCommand();
+		break;
+	}
+	return NOERROR;
+}
+/*static*/ enum _KRT2StateMachine CCOMHostDlg::DriveCommand()
+{
+	++s_pSequence; // read next
+	if (END == *s_pSequence)
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("  command %c and arguments complete\n"), *s_pCurrentCmd);
+
+		s_pCurrentCmd = NULL; // wait for / reset to - next command
+		return WAIT_FOR_STX;
+	}
+	else
+		return *s_pSequence;
 }
