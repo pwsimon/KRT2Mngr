@@ -183,6 +183,7 @@ void CCOMHostDlg::OnClose()
 	m_ReadThreadArgs.hCOMPort = INVALID_HANDLE_VALUE;
 	::CloseHandle(m_ReadThreadArgs.hEvtCOMPort);
 	m_ReadThreadArgs.hEvtCOMPort = INVALID_HANDLE_VALUE;
+	m_ReadThreadArgs.hWndMainDlg = NULL;
 
 	CDHtmlDialog::OnClose();
 }
@@ -214,8 +215,8 @@ void CCOMHostDlg::OnClose()
 	return dwThreadTerminated;
 }
 
-#define KRT2INPUT  _T("krt2input.bin")
-// #define KRT2INPUT  _T("COM5")
+// #define KRT2INPUT  _T("krt2input.bin")
+#define KRT2INPUT  _T("COM5")
 #define KRT2OUTPUT _T("COM5")
 HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 {
@@ -323,6 +324,7 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 	*/
 	m_ReadThreadArgs.hEvtCOMPort = ::CreateEvent(NULL, TRUE, FALSE, NULL); // currently never signaled;
 	m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
+	m_ReadThreadArgs.hWndMainDlg = m_hWnd;
 	m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CCOMHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
 
 	return S_OK;
@@ -332,7 +334,7 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 {
 	struct _ReadThreadArg* pArgs = (struct _ReadThreadArg*) arguments;
 
-	BYTE rgCommand[0x01]; // wir muessen BYTE weise lesen denn es gibt auch KRT2 commands die nuer EIN BYTE lang sind z.B. 'S'
+	BYTE rgCommand[0x01]; // wir muessen BYTE weise lesen denn es gibt auch KRT2 commands die nur EIN BYTE lang sind z.B. 'S'
 	::ZeroMemory(rgCommand, _countof(rgCommand));
 	::ZeroMemory(&s_Overlapped, sizeof(OVERLAPPED));
 	s_Overlapped.hEvent = ::CreateEvent(NULL, TRUE, FALSE, NULL); // manual reset is required for overlapped I/O
@@ -397,7 +399,7 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 				s_Overlapped.Offset += dwNumberOfBytesRead;
 
 				ATLTRACE2(atlTraceGeneral, 1, _T("  process 0x%.8x\n"), rgCommand[0]);
-				CCOMHostDlg::DriveStateMachine(rgCommand[0], TRUE);
+				CCOMHostDlg::DriveStateMachine(pArgs->hWndMainDlg, rgCommand[0], TRUE);
 
 				ATLTRACE2(atlTraceGeneral, 1, _T("  continue\n"));
 				continue;
@@ -416,7 +418,7 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 			* If an operation is completed immediately, an application needs to be ready to continue processing normally.
 			*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
 			*/
-			CCOMHostDlg::DriveStateMachine(rgCommand[0], FALSE);
+			CCOMHostDlg::DriveStateMachine(pArgs->hWndMainDlg, rgCommand[0], FALSE);
 		}
 	}
 
@@ -427,7 +429,7 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 enum _KRT2StateMachine
 {
 	END,
-	WAIT_FOR_STX,
+	IDLE,
 	WAIT_FOR_CMD,
 	WAIT_FOR_MHZ,
 	WAIT_FOR_kHZ,
@@ -441,9 +443,10 @@ enum _KRT2StateMachine
 	WAIT_FOR_N7,
 	WAIT_FOR_MNR,
 	WAIT_FOR_CHK
-} s_state = WAIT_FOR_STX;
-enum _KRT2StateMachine const* s_pSequence = NULL;
+} s_state = IDLE;
 enum _KRT2StateMachine const* s_pCurrentCmd = NULL;
+unsigned int s_iIndexCmd = 1;
+BYTE s_rgValuesCmd[0x10]; // hier stehen die werte der stellungsparameter fuer das s_pCurrentCmd
 /*
 * 1.2 Out-going strings (from Radio after changing on panel):
 * MultiByte Commands
@@ -451,8 +454,8 @@ enum _KRT2StateMachine const* s_pCurrentCmd = NULL;
 const enum _KRT2StateMachine s_U121[13] = { (enum _KRT2StateMachine)'U', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_N3, WAIT_FOR_N4, WAIT_FOR_N5, WAIT_FOR_N6, WAIT_FOR_N7, WAIT_FOR_CHK, END };
 const enum _KRT2StateMachine s_R122[14] = { (enum _KRT2StateMachine)'R', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_N3, WAIT_FOR_N4, WAIT_FOR_N5, WAIT_FOR_N6, WAIT_FOR_N7, WAIT_FOR_MNR, WAIT_FOR_CHK, END };
 const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, END }; // ToDo:
-BYTE s_rgValues[0x10]; // hier stehen die werte der stellungsparameter
 /*static*/ HRESULT CCOMHostDlg::DriveStateMachine(
+	HWND hwndMainDlg,
 	BYTE byte,
 	BOOL bAsynchronous)
 {
@@ -463,8 +466,24 @@ BYTE s_rgValues[0x10]; // hier stehen die werte der stellungsparameter
 
 	switch (s_state)
 	{
-	case WAIT_FOR_STX:
-		if (0x02 == byte) s_state = WAIT_FOR_CMD; break;
+	case IDLE:
+		if ('S' == byte)
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("keep alive / ping - received\n"));
+
+			/*
+			* aktuell verwenden wir die SendeRoutine aus dem GUI Thread
+			* durch den hwndMainDlg haben wir einen channel/API zur GUI/SenderThread/...
+			*/
+			::PostMessage(hwndMainDlg, WM_USER, 0, MAKELPARAM('s', 0));
+			break;
+		}
+
+		else if (0x02 == byte)
+		{
+			s_state = WAIT_FOR_CMD;
+			break;
+		}
 		// keep this state until next 'stx'
 		break;
 	case WAIT_FOR_CMD:
@@ -472,89 +491,114 @@ BYTE s_rgValues[0x10]; // hier stehen die werte der stellungsparameter
 		* SingleByte commands (1.2.8 Status reports)
 		*/
 		if ('B' == byte) // low BATT
-			s_state = WAIT_FOR_STX;
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("single byte command: low BATT\n"));
+			s_state = IDLE;
+		}
 
 		else if ('D' == byte) // release low BATT
-			s_state = WAIT_FOR_STX;
+			s_state = IDLE;
 
 		else if ('J' == byte) // RX
-			s_state = WAIT_FOR_STX;
+			s_state = IDLE;
 
 		else if ('V' == byte) // release RX
-			s_state = WAIT_FOR_STX;
+			s_state = IDLE;
 
 		else if ('O' == byte) // 1.2.6 DUAL-mode on
-			s_state = WAIT_FOR_STX;
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("single byte command: DUAL-mode on\n"));
+			s_state = IDLE;
+		}
 
 		else if ('o' == byte) // 1.2.7 DUAL-mode off
-			s_state = WAIT_FOR_STX;
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("single byte command: DUAL-mode off\n"));
+			s_state = IDLE;
+		}
 
 		// MultiByte commands
 		else if ('U' == byte)
 		{
-			s_pCurrentCmd = s_pSequence = s_U121;
-			s_state = *++s_pSequence; // skip command id
+			s_pCurrentCmd = s_U121;
+			s_iIndexCmd = 1; // skip command id
+			s_state = s_pCurrentCmd[s_iIndexCmd];
 		}
 
 		else if ('R' == byte)
 		{
-			s_pCurrentCmd = s_pSequence = s_R122;
-			s_state = *++s_pSequence; // skip command id
+			s_pCurrentCmd = s_R122;
+			s_iIndexCmd = 1; // skip command id
+			s_state = s_pCurrentCmd[s_iIndexCmd];
 		}
 
 		else
-			s_state = WAIT_FOR_STX; // unknown command
+			s_state = IDLE; // unknown command, reset to IDLE
 
 		break;
 	case WAIT_FOR_MHZ:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	case WAIT_FOR_kHZ:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	case WAIT_FOR_N0:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	case WAIT_FOR_N1:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	case WAIT_FOR_N2:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	case WAIT_FOR_N3:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	case WAIT_FOR_N4:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	case WAIT_FOR_N5:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	case WAIT_FOR_N6:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	case WAIT_FOR_N7:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	case WAIT_FOR_MNR:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	case WAIT_FOR_CHK:
-		s_state = DriveCommand();
+		s_state = CCOMHostDlg::DriveCommand(byte);
 		break;
 	}
 	return NOERROR;
 }
-/*static*/ enum _KRT2StateMachine CCOMHostDlg::DriveCommand()
+/*static*/ enum _KRT2StateMachine CCOMHostDlg::DriveCommand(BYTE byte)
 {
-	++s_pSequence; // read next
-	if (END == *s_pSequence)
+	s_rgValuesCmd[s_iIndexCmd] = byte;
+	s_iIndexCmd += 1; // read next
+	if (END == s_pCurrentCmd[s_iIndexCmd])
 	{
-		ATLTRACE2(atlTraceGeneral, 0, _T("  command %c and arguments complete\n"), *s_pCurrentCmd);
-
+		switch (s_pCurrentCmd[0])
+		{
+		case 'R':
+			{
+				const int iCheckSum = s_rgValuesCmd[1 /* WAIT_FOR_MHZ */] ^ s_rgValuesCmd[2 /* WAIT_FOR_kHZ */]; // these indexes are command specific
+				_ASSERT(iCheckSum == s_rgValuesCmd[12 /* WAIT_FOR_CHK */]);
+				char szStation[9] = { s_rgValuesCmd[3], s_rgValuesCmd[4], s_rgValuesCmd[5], s_rgValuesCmd[6], s_rgValuesCmd[7], s_rgValuesCmd[8], s_rgValuesCmd[9], '\0' }; // WAIT_FOR_N0 - WAIT_FOR_N7
+				ATLTRACE2(atlTraceGeneral, 0, _T("command R, %hs complete\n"), szStation);
+			}
+			break;
+		default:
+			ATLTRACE2(atlTraceGeneral, 0, _T("  command %c and arguments complete\n"), s_pCurrentCmd[0]);
+			break;
+		}
 		s_pCurrentCmd = NULL; // wait for / reset to - next command
-		return WAIT_FOR_STX;
+		s_iIndexCmd = 1;
+		return IDLE;
 	}
 	else
-		return *s_pSequence;
+		return s_pCurrentCmd[s_iIndexCmd];
 }

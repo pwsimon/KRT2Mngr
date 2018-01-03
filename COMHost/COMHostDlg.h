@@ -27,14 +27,15 @@ protected:
 	HICON m_hIcon;
 	HANDLE m_hCOMx;
 	struct _ReadThreadArg {
+		HWND hWndMainDlg;
 		HANDLE hCOMPort;
 		HANDLE hEvtTerminate;
 		HANDLE hEvtCOMPort;
 	} m_ReadThreadArgs;
 	HANDLE m_hReadThread;
 	static unsigned int __stdcall COMReadThread(void* arguments);
-	static HRESULT DriveStateMachine(BYTE byte, BOOL bAsynchronous);
-	static enum _KRT2StateMachine DriveCommand();
+	static HRESULT DriveStateMachine(HWND hwndMainDlg, BYTE byte, BOOL bAsynchronous);
+	static enum _KRT2StateMachine DriveCommand(BYTE byte);
 	static DWORD SignalObjectAndWait(HANDLE hEvtTerminate, HANDLE hThread);
 
 	// Generated message map functions
