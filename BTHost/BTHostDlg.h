@@ -24,19 +24,26 @@ public:
 // Implementation
 protected:
 	HICON m_hIcon;
+	int m_iRetCWSAStartup;
 
 	// Generated message map functions
 	virtual BOOL OnInitDialog();
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
+	afx_msg void OnClose();
+
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
 
 private:
 	HRESULT enumBTRadio(HANDLE& hRadio);
 	HRESULT enumBTDevices(HANDLE hRadio);
+	HRESULT enumBTDevices(GUID serviceClass);
 	HRESULT enumBTServices(LPCWSTR szDeviceAddress, GUID serviceClass);
+	HRESULT Connect(PSOCKADDR_BTH RemoteAddr);
+	static ULONG NameToBthAddr(const LPWSTR pszRemoteName, PSOCKADDR_BTH pRemoteBtAddr);
 	static HRESULT BTAddressToString(BLUETOOTH_ADDRESS* pBTAddr, BSTR* pbstrAddress);
 	static HRESULT BTAddressToString(PSOCKADDR_BTH lpAddress, BSTR* pbstrAddress);
+	static HRESULT ShowWSALastError(LPCTSTR szCaption);
 };
