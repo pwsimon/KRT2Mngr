@@ -42,12 +42,22 @@ BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
 END_MESSAGE_MAP()
 
 // CCOMHostDlg dialog
+#define WM_USER_RXSINGLEBYTE    (WM_USER + 1) // posted from COMReadThread
+#define WM_USER_RXDECODEDCMD    (WM_USER + 2)
+
+OVERLAPPED s_Overlapped;
+
 BEGIN_DHTML_EVENT_MAP(CCOMHostDlg)
 	DHTML_EVENT_ONCLICK(_T("btnSend"), OnSend)
 	DHTML_EVENT_ONCLICK(_T("btnRead"), OnRead)
 END_DHTML_EVENT_MAP()
 
-OVERLAPPED s_Overlapped;
+BEGIN_MESSAGE_MAP(CCOMHostDlg, CDHtmlDialog)
+	ON_WM_SYSCOMMAND()
+	ON_WM_CLOSE()
+	ON_MESSAGE(WM_USER_RXSINGLEBYTE, OnRXSingleByte)
+	ON_MESSAGE(WM_USER_RXDECODEDCMD, OnRXDecodedCmd)
+END_MESSAGE_MAP()
 
 CCOMHostDlg::CCOMHostDlg(CWnd* pParent /*=NULL*/)
 	: CDHtmlDialog(IDD_COMHOST_DIALOG, IDR_HTML_COMHOST_DIALOG, pParent)
@@ -62,11 +72,6 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 	CDHtmlDialog::DoDataExchange(pDX);
 }
 
-BEGIN_MESSAGE_MAP(CCOMHostDlg, CDHtmlDialog)
-	ON_WM_SYSCOMMAND()
-	ON_WM_CLOSE()
-END_MESSAGE_MAP()
-
 // CCOMHostDlg message handlers
 BOOL CCOMHostDlg::OnInitDialog()
 {
@@ -77,7 +82,7 @@ BOOL CCOMHostDlg::OnInitDialog()
 	*     COMHost.cpp(44): CCOMHostApp::InitInstance()
 	*     HKEY_CURRENT_USER\SOFTWARE\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\COMHost.exe (REG_DWORD) 11000
 	*/
-	// m_nHtmlResID = 0;
+	m_nHtmlResID = 0;
 	// m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
 	m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
 	CCommandLineInfo cmdLI;
@@ -165,6 +170,36 @@ HCURSOR CCOMHostDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+LRESULT CCOMHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
+{
+	ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::OnRXSingleByte(0x%.2x)\n"), LOWORD(wParam));
+
+	/*
+	* konsequent muss hier der in JavaScript implementierte parser getrieben werden
+	*   z.b. Invoke1(L"DriveStateMachine", CComVariant(LOWORD(wParam)))
+	* bzw. einfach ein generisches forward 
+	*   z.b. Invoke1(L"OnRXSingleByte", CComVariant(LOWORD(wParam)))
+	* oder als JavaScript (callback)
+	* window.external.KRT2ReadByte(function(nByte) {
+	*   console.log(nByte);
+	* })
+	*/
+	CString strByte;
+	strByte.Format(_T("0x%.2x"), LOWORD(wParam));
+	CComBSTR bstrCommand = strByte;
+	SetElementText(_T("command"), bstrCommand);
+	return 0;
+}
+
+LRESULT CCOMHostDlg::OnRXDecodedCmd(WPARAM wParam, LPARAM lParam)
+{
+	ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::OnRXDecodedCmd(0x%.2x): %s\n"), LOWORD(wParam), (LPCTSTR)lParam);
+	CComBSTR bstrCommand = (LPCTSTR) lParam;
+	delete[] (PTCHAR) lParam;
+	SetElementText(_T("command"), bstrCommand);
+	return 0;
+}
+
 void CCOMHostDlg::OnClose()
 {
 	if (INVALID_HANDLE_VALUE != m_hCOMx)
@@ -183,7 +218,7 @@ void CCOMHostDlg::OnClose()
 	m_ReadThreadArgs.hCOMPort = INVALID_HANDLE_VALUE;
 	::CloseHandle(m_ReadThreadArgs.hEvtCOMPort);
 	m_ReadThreadArgs.hEvtCOMPort = INVALID_HANDLE_VALUE;
-	m_ReadThreadArgs.hWndMainDlg = NULL;
+	m_ReadThreadArgs.hwndMainDlg = NULL;
 
 	CDHtmlDialog::OnClose();
 }
@@ -215,6 +250,16 @@ void CCOMHostDlg::OnClose()
 	return dwThreadTerminated;
 }
 
+/*
+* dieses testfile enthaelt die folgenden UseCases:
+* 1.) 'R', 1.2.2 Set frequency & name on passive side, 126.900, PETER
+* 2.) 'O', 1.2.6 DUAL-mode on
+* 3.) 'o', 1.2.7 DUAL-mode off
+* 4.) 'B', low BATT
+* 5.) 'D', release low BATT
+* 6.) 'J', RX
+* 7.) 'V', release RX
+*/
 // #define KRT2INPUT  _T("krt2input.bin")
 #define KRT2INPUT  _T("COM5")
 #define KRT2OUTPUT _T("COM5")
@@ -324,7 +369,7 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 	*/
 	m_ReadThreadArgs.hEvtCOMPort = ::CreateEvent(NULL, TRUE, FALSE, NULL); // currently never signaled;
 	m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
-	m_ReadThreadArgs.hWndMainDlg = m_hWnd;
+	m_ReadThreadArgs.hwndMainDlg = m_hWnd;
 	m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CCOMHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
 
 	return S_OK;
@@ -399,7 +444,12 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 				s_Overlapped.Offset += dwNumberOfBytesRead;
 
 				ATLTRACE2(atlTraceGeneral, 1, _T("  process 0x%.8x\n"), rgCommand[0]);
-				CCOMHostDlg::DriveStateMachine(pArgs->hWndMainDlg, rgCommand[0], TRUE);
+#ifdef DISPATCH_LOWLEVEL_BYTERECEIVE
+				::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
+#endif
+#ifdef DRIVE_COMMANDPARSER
+				CCOMHostDlg::DriveStateMachine(pArgs->hwndMainDlg, rgCommand[0], TRUE);
+#endif
 
 				ATLTRACE2(atlTraceGeneral, 1, _T("  continue\n"));
 				continue;
@@ -418,13 +468,28 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 			* If an operation is completed immediately, an application needs to be ready to continue processing normally.
 			*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
 			*/
-			CCOMHostDlg::DriveStateMachine(pArgs->hWndMainDlg, rgCommand[0], FALSE);
+#ifdef DISPATCH_LOWLEVEL_BYTERECEIVE
+			::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
+#endif
+#ifdef DRIVE_COMMANDPARSER
+			CCOMHostDlg::DriveStateMachine(pArgs->hwndMainDlg, rgCommand[0], FALSE);
+#endif
 		}
 	}
 
 	ATLTRACE2(atlTraceGeneral, 0, _T("Leave COMReadThread()\n"));
 	return 0;
 }
+
+#define B_CMD_FORMAT_JSON _T("{ \"nCommand\": \"B\" }")
+#define D_CMD_FORMAT_JSON _T("{ \"nCommand\": \"D\" }")
+#define J_CMD_FORMAT_JSON _T("{ \"nCommand\": \"J\" }")
+#define V_CMD_FORMAT_JSON _T("{ \"nCommand\": \"V\" }")
+#define O_CMD_FORMAT_JSON _T("{ \"nCommand\": \"O\" }")
+#define o_CMD_FORMAT_JSON _T("{ \"nCommand\": \"o\" }")
+#define U_CMD_FORMAT_JSON _T("{ \"nCommand\": \"U\", \"nFrequence\": %d, \"sStation\": \"%hs\" }")
+#define R_CMD_FORMAT_JSON _T("{ \"nCommand\": \"R\", \"nFrequence\": %d, \"sStation\": \"%hs\", \"nIndex\", %d }")
+#define A_CMD_FORMAT_JSON _T("{ \"nCommand\": \"A\", \"nVolume\": %d, \"nSquelch\": %d, \"nVOX\": %d }")
 
 enum _KRT2StateMachine
 {
@@ -450,15 +515,24 @@ BYTE s_rgValuesCmd[0x10]; // hier stehen die werte der stellungsparameter fuer d
 /*
 * 1.2 Out-going strings (from Radio after changing on panel):
 * MultiByte Commands
+* Hinweis:
+*   nicht verwechseln mit den dazugehoehrigen "Incomming" messages.
+*   z.B. die 1.3.5 Set a single record & name to database with address hat exact das dasselbe format wie die s_R122 message
 */
 const enum _KRT2StateMachine s_U121[13] = { (enum _KRT2StateMachine)'U', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_N3, WAIT_FOR_N4, WAIT_FOR_N5, WAIT_FOR_N6, WAIT_FOR_N7, WAIT_FOR_CHK, END };
 const enum _KRT2StateMachine s_R122[14] = { (enum _KRT2StateMachine)'R', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_N3, WAIT_FOR_N4, WAIT_FOR_N5, WAIT_FOR_N6, WAIT_FOR_N7, WAIT_FOR_MNR, WAIT_FOR_CHK, END };
-const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, END }; // ToDo:
+const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_CHK, END };
+/*
+* return value:
+*   NOERROR:       reset to IDLE. command parsing finished.
+*   S_FALSE:       continue parsing command (consume bytes)
+*/
 /*static*/ HRESULT CCOMHostDlg::DriveStateMachine(
 	HWND hwndMainDlg,
 	BYTE byte,
 	BOOL bAsynchronous)
 {
+	HRESULT hr = S_FALSE;
 	if (bAsynchronous)
 		ATLTRACE2(atlTraceGeneral, 1, _T("  process result from asynchronous read 0x%.8x\n"), byte);
 	else
@@ -470,12 +544,6 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 		if ('S' == byte)
 		{
 			ATLTRACE2(atlTraceGeneral, 0, _T("keep alive / ping - received\n"));
-
-			/*
-			* aktuell verwenden wir die SendeRoutine aus dem GUI Thread
-			* durch den hwndMainDlg haben wir einen channel/API zur GUI/SenderThread/...
-			*/
-			::PostMessage(hwndMainDlg, WM_USER, 0, MAKELPARAM('s', 0));
 			break;
 		}
 
@@ -492,32 +560,86 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 		*/
 		if ('B' == byte) // low BATT
 		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("single byte command: low BATT\n"));
+			// ATLTRACE2(atlTraceGeneral, 0, _T("single byte command: low BATT\n"));
+			CString strCommand;
+			strCommand.Format(B_CMD_FORMAT_JSON);
+			const size_t _size = strCommand.GetLength() + 1;
+			PTCHAR lParam = new TCHAR[_size];
+			_tcscpy_s(lParam, _size, strCommand.GetBuffer());
+			::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM(byte, 0), (LPARAM)lParam);
+			hr = NOERROR;
+			_ASSERT(s_state != IDLE); // ensure transition
 			s_state = IDLE;
 		}
 
 		else if ('D' == byte) // release low BATT
+		{
+			CString strCommand;
+			strCommand.Format(D_CMD_FORMAT_JSON);
+			const size_t _size = strCommand.GetLength() + 1;
+			PTCHAR lParam = new TCHAR[_size];
+			_tcscpy_s(lParam, _size, strCommand.GetBuffer());
+			::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM(byte, 0), (LPARAM)lParam);
+			hr = NOERROR;
+			_ASSERT(s_state != IDLE); // ensure transition
 			s_state = IDLE;
+		}
 
 		else if ('J' == byte) // RX
+		{
+			CString strCommand;
+			strCommand.Format(J_CMD_FORMAT_JSON);
+			const size_t _size = strCommand.GetLength() + 1;
+			PTCHAR lParam = new TCHAR[_size];
+			_tcscpy_s(lParam, _size, strCommand.GetBuffer());
+			::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM(byte, 0), (LPARAM)lParam);
+			hr = NOERROR;
+			_ASSERT(s_state != IDLE); // ensure transition
 			s_state = IDLE;
+		}
 
 		else if ('V' == byte) // release RX
+		{
+			CString strCommand;
+			strCommand.Format(V_CMD_FORMAT_JSON);
+			const size_t _size = strCommand.GetLength() + 1;
+			PTCHAR lParam = new TCHAR[_size];
+			_tcscpy_s(lParam, _size, strCommand.GetBuffer());
+			::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM(byte, 0), (LPARAM)lParam);
+			hr = NOERROR;
+			_ASSERT(s_state != IDLE); // ensure transition
 			s_state = IDLE;
+		}
 
 		else if ('O' == byte) // 1.2.6 DUAL-mode on
 		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("single byte command: DUAL-mode on\n"));
+			// ATLTRACE2(atlTraceGeneral, 0, _T("single byte command: DUAL-mode on\n"));
+			CString strCommand;
+			strCommand.Format(O_CMD_FORMAT_JSON);
+			const size_t _size = strCommand.GetLength() + 1;
+			PTCHAR lParam = new TCHAR[_size];
+			_tcscpy_s(lParam, _size, strCommand.GetBuffer());
+			::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM(byte, 0), (LPARAM)lParam);
+			hr = NOERROR;
+			_ASSERT(s_state != IDLE); // ensure transition
 			s_state = IDLE;
 		}
 
 		else if ('o' == byte) // 1.2.7 DUAL-mode off
 		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("single byte command: DUAL-mode off\n"));
+			// ATLTRACE2(atlTraceGeneral, 0, _T("single byte command: DUAL-mode off\n"));
+			CString strCommand;
+			strCommand.Format(o_CMD_FORMAT_JSON);
+			const size_t _size = strCommand.GetLength() + 1;
+			PTCHAR lParam = new TCHAR[_size];
+			_tcscpy_s(lParam, _size, strCommand.GetBuffer());
+			::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM(byte, 0), (LPARAM)lParam);
+			hr = NOERROR;
+			_ASSERT(s_state != IDLE); // ensure transition
 			s_state = IDLE;
 		}
 
-		// MultiByte commands
+		// begin parsing of MultiByte commands
 		else if ('U' == byte)
 		{
 			s_pCurrentCmd = s_U121;
@@ -533,49 +655,55 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 		}
 
 		else
-			s_state = IDLE; // unknown command, reset to IDLE
+		{
+			hr = NOERROR;
+			s_state = IDLE; // unknown command, reset to IDLE / abort
+		}
 
 		break;
 	case WAIT_FOR_MHZ:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	case WAIT_FOR_kHZ:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	case WAIT_FOR_N0:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	case WAIT_FOR_N1:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	case WAIT_FOR_N2:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	case WAIT_FOR_N3:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	case WAIT_FOR_N4:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	case WAIT_FOR_N5:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	case WAIT_FOR_N6:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	case WAIT_FOR_N7:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	case WAIT_FOR_MNR:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	case WAIT_FOR_CHK:
-		s_state = CCOMHostDlg::DriveCommand(byte);
+		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
 		break;
 	}
-	return NOERROR;
+	return hr;
 }
-/*static*/ enum _KRT2StateMachine CCOMHostDlg::DriveCommand(BYTE byte)
+
+/*static*/ enum _KRT2StateMachine CCOMHostDlg::DriveCommand(
+	HWND hwndMainDlg,
+	BYTE byte)
 {
 	s_rgValuesCmd[s_iIndexCmd] = byte;
 	s_iIndexCmd += 1; // read next
@@ -584,11 +712,18 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 		switch (s_pCurrentCmd[0])
 		{
 		case 'R':
-			{
-				const int iCheckSum = s_rgValuesCmd[1 /* WAIT_FOR_MHZ */] ^ s_rgValuesCmd[2 /* WAIT_FOR_kHZ */]; // these indexes are command specific
-				_ASSERT(iCheckSum == s_rgValuesCmd[12 /* WAIT_FOR_CHK */]);
-				char szStation[9] = { s_rgValuesCmd[3], s_rgValuesCmd[4], s_rgValuesCmd[5], s_rgValuesCmd[6], s_rgValuesCmd[7], s_rgValuesCmd[8], s_rgValuesCmd[9], '\0' }; // WAIT_FOR_N0 - WAIT_FOR_N7
-				ATLTRACE2(atlTraceGeneral, 0, _T("command R, %hs complete\n"), szStation);
+		{
+			const int iCheckSum = s_rgValuesCmd[1 /* WAIT_FOR_MHZ */] ^ s_rgValuesCmd[2 /* WAIT_FOR_kHZ */]; // these indexes are command specific
+			_ASSERT(iCheckSum == s_rgValuesCmd[12 /* WAIT_FOR_CHK */]);
+			const int iFrequence = s_rgValuesCmd[1 /* WAIT_FOR_MHZ */] * 1000 + s_rgValuesCmd[2 /* WAIT_FOR_kHZ */] * 5;
+			const char szStation[9] = { s_rgValuesCmd[3], s_rgValuesCmd[4], s_rgValuesCmd[5], s_rgValuesCmd[6], s_rgValuesCmd[7], s_rgValuesCmd[8], s_rgValuesCmd[9], '\0' }; // WAIT_FOR_N0 - WAIT_FOR_N7
+			// ATLTRACE2(atlTraceGeneral, 0, _T("command R, %hs complete\n"), szStation);
+			CString strCommand;
+			strCommand.Format(R_CMD_FORMAT_JSON, iFrequence, szStation, s_rgValuesCmd[11 /* WAIT_FOR_MNR */]);
+			const size_t _size = strCommand.GetLength() + 1;
+			PTCHAR lParam = new TCHAR[_size];
+			_tcscpy_s(lParam, _size, strCommand.GetBuffer());
+			::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM('R', 0), (LPARAM) lParam);
 			}
 			break;
 		default:

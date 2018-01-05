@@ -27,7 +27,7 @@ protected:
 	HICON m_hIcon;
 	HANDLE m_hCOMx;
 	struct _ReadThreadArg {
-		HWND hWndMainDlg;
+		HWND hwndMainDlg;
 		HANDLE hCOMPort;
 		HANDLE hEvtTerminate;
 		HANDLE hEvtCOMPort;
@@ -35,7 +35,7 @@ protected:
 	HANDLE m_hReadThread;
 	static unsigned int __stdcall COMReadThread(void* arguments);
 	static HRESULT DriveStateMachine(HWND hwndMainDlg, BYTE byte, BOOL bAsynchronous);
-	static enum _KRT2StateMachine DriveCommand(BYTE byte);
+	static enum _KRT2StateMachine DriveCommand(HWND hwndMainDlg, BYTE byte);
 	static DWORD SignalObjectAndWait(HANDLE hEvtTerminate, HANDLE hThread);
 
 	// Generated message map functions
@@ -44,6 +44,8 @@ protected:
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
 	afx_msg void OnClose();
+	afx_msg LRESULT OnRXSingleByte(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnRXDecodedCmd(WPARAM wParam, LPARAM lParam);
 
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
