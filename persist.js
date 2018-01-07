@@ -1,13 +1,7 @@
 ﻿var PersistModul = PersistModul || (function () {
 	return {
 		rgStations: [
-			{ nFrequence: 123500, sName: "Geratshf" },
-			{ nFrequence: 123995, sName: "BadWoer" },
-			{ nFrequence: 120100, sName: "KemptenD" },
-			{ nFrequence: 126025, sName: "Agathazl" },
-			{ nFrequence: 118500, sName: "Memmingn" },
-			{ nFrequence: 122500, sName: "Paterzel" },
-			{ nFrequence: 126900, sName: "PETER" }
+			{ sName: "Geratshf", nFrequence: 123500 }
 		],
 
 		readSingleFile: function (e) {
@@ -16,10 +10,15 @@
 
 			var reader = new FileReader();
 			reader.onload = function (e) {
-				var contents = e.target.result;
-				// displayContents(contents);
-				console.log(e.target.result);
-				var rgStations = str.split("\n\a");
+				/* var sContents = e.target.result;
+				displayContents(sContents);
+				console.log(e.target.result); */
+				var rgStations = e.target.result.split("\n");
+				PersistModul.rgStations = rgStations.map(function (currentValue, index, arr) {
+					var rgValues = currentValue.split(";");
+					return { sName: rgValues[0], nFrequence: parseFloat(rgValues[1]) * 1000 };
+				});
+				console.log("read:", rgStations.length, " stations (rgStations.length)");
 			};
 			reader.readAsText(file);
 		}
