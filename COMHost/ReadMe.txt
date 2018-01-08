@@ -6,6 +6,7 @@ variante 1: (COMHost.exe) via COM Port,
 variante 2: (BTHost.exe) echter zugriff ueber die BT API
 
 History: (der letzte/neueste eintrag steht oben)
+- absturtz bei ShowLastError() behoben. MessageBox() bei Sharing violation
 - comunicate received Bytes/Commands to MainThread and GUI
 - extract values for command, rename first state to IDLE
 - die logik/structure der ReadFile loop MUSS in jedem fall Synchrones UND Asynchrones verhalten behandeln koennen

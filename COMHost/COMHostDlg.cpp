@@ -63,7 +63,7 @@ CCOMHostDlg::CCOMHostDlg(CWnd* pParent /*=NULL*/)
 	: CDHtmlDialog(IDD_COMHOST_DIALOG, IDR_HTML_COMHOST_DIALOG, pParent)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
-	m_hCOMx = INVALID_HANDLE_VALUE;
+	m_hCOMWrite = INVALID_HANDLE_VALUE;
 	m_hReadThread = INVALID_HANDLE_VALUE;
 }
 
@@ -202,10 +202,10 @@ LRESULT CCOMHostDlg::OnRXDecodedCmd(WPARAM wParam, LPARAM lParam)
 
 void CCOMHostDlg::OnClose()
 {
-	if (INVALID_HANDLE_VALUE != m_hCOMx)
+	if (INVALID_HANDLE_VALUE != m_hCOMWrite)
 	{
-		::CloseHandle(m_hCOMx);
-		m_hCOMx = INVALID_HANDLE_VALUE;
+		::CloseHandle(m_hCOMWrite);
+		m_hCOMWrite = INVALID_HANDLE_VALUE;
 	}
 
 	// ::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread, 5000, FALSE);
@@ -281,26 +281,28 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	* dummerweise bleibt bei der commandofolge CreateFile/CloseHandle irgendetwas haengen
 	* so das ich die commandofolge kein zweites mal ausfuehren kann???
 	*/
-	if (INVALID_HANDLE_VALUE == m_hCOMx)
+	if (INVALID_HANDLE_VALUE == m_hCOMWrite)
 	{
-		m_hCOMx = ::CreateFile(KRT2OUTPUT, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (INVALID_HANDLE_VALUE == m_hCOMx)
-		{
-			CCOMHostDlg::ShowLastError(_T("::CreateFile() Failed"));
-			return E_FAIL;
-		}
+		/*
+		* Creating and Opening Files, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363874(v=vs.85).aspx
+		* m_hCOMWrite               => GENERIC_WRITE, FILE_SHARE_READ
+		* m_ReadThreadArgs.hCOMPort => GENERIC_READ,  FILE_SHARE_WRITE
+		*/
+		m_hCOMWrite = ::CreateFile(KRT2OUTPUT, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (INVALID_HANDLE_VALUE == m_hCOMWrite)
+			return CCOMHostDlg::ShowLastError(_T("::CreateFile(..., GENERIC_WRITE, ...)"));
 	}
 
 	DCB dcb;
 	::ZeroMemory(&dcb, sizeof(DCB));
 	dcb.DCBlength = sizeof(DCB);
-	BOOL bRetC = ::GetCommState(m_hCOMx, &dcb);
+	BOOL bRetC = ::GetCommState(m_hCOMWrite, &dcb);
 
 	/* COMMPROP CommProp;
-	bRetC = ::GetCommProperties(m_hCOMx, &CommProp);
+	bRetC = ::GetCommProperties(m_hCOMWrite, &CommProp);
 
 	COMMTIMEOUTS CommTimeouts;
-	bRetC = ::GetCommTimeouts(m_hCOMx, &CommTimeouts); */
+	bRetC = ::GetCommTimeouts(m_hCOMWrite, &CommTimeouts); */
 
 	/*
 	* bstrCommand enthaelt die hexcodierten bytes space delemitted
@@ -329,22 +331,28 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	*/
 
 	DWORD dwNumBytesWritten;
-	if (::WriteFile(m_hCOMx, rgCommand, uiIndex, &dwNumBytesWritten, NULL))
+	if (::WriteFile(m_hCOMWrite, rgCommand, uiIndex, &dwNumBytesWritten, NULL))
 		_ASSERT(uiIndex == dwNumBytesWritten);
 	else
 		CCOMHostDlg::ShowLastError(_T("::WriteFile() Failed"));
 
 	DWORD dwErrors = 0;
 	COMSTAT COMStat;
-	if (!::ClearCommError(m_hCOMx, &dwErrors, &COMStat))
+	if (!::ClearCommError(m_hCOMWrite, &dwErrors, &COMStat))
 		CCOMHostDlg::ShowLastError(_T("::ClearCommError() Failed"));
 
 	return S_OK;
 }
 
-/*static*/ HRESULT CCOMHostDlg::ShowLastError(LPCTSTR szCaption)
+/*static*/ HRESULT CCOMHostDlg::ShowLastError(
+	LPCTSTR szCaption,
+	const DWORD* pdwLastError /* = NULL */)
 {
-	const DWORD dwMessageId(::GetLastError());
+	const DWORD dwMessageId = pdwLastError ? *pdwLastError : ::GetLastError();
+
+	CString strCaption;
+	strCaption.Format(_T("%s returned: 0x%.8x"), (LPCTSTR)strCaption, dwMessageId);
+
 	CString strDesc;
 	DWORD dwRetC = ::FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM,
 		NULL,
@@ -353,24 +361,24 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 		strDesc.GetBufferSetLength(0xff), 0xff,
 		NULL); // _In_opt_ va_list *Arguments
 	strDesc.ReleaseBuffer();
-	CString strMsg;
-	strMsg.Format(_T("%s, returned: 0x%.8x"), dwMessageId);
-	::MessageBox(NULL, strMsg, szCaption, MB_OK);
-	return NOERROR;
+
+	::MessageBox(NULL, (LPCTSTR)strDesc, (LPCTSTR)strCaption, MB_OK);
+	return HRESULT_FROM_WIN32(dwMessageId);
 }
 
 HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 {
-	const DWORD dwFlags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED; // fuer "COM<Port>" ist das FILE_ATTRIBUTE_NORMAL evtl. ueberfluessig
-	m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2INPUT, GENERIC_READ, 0, NULL, OPEN_EXISTING, dwFlags, NULL);
-	_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hCOMPort);
-
-	/*
-	*/
-	m_ReadThreadArgs.hEvtCOMPort = ::CreateEvent(NULL, TRUE, FALSE, NULL); // currently never signaled;
-	m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
-	m_ReadThreadArgs.hwndMainDlg = m_hWnd;
-	m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CCOMHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
+	const DWORD dwFlags = FILE_FLAG_OVERLAPPED; // fuer "COM<Port>" ist das FILE_ATTRIBUTE_NORMAL evtl. ueberfluessig
+	m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2INPUT, GENERIC_READ, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, dwFlags, NULL);
+	if (INVALID_HANDLE_VALUE != m_ReadThreadArgs.hCOMPort)
+	{
+		m_ReadThreadArgs.hEvtCOMPort = ::CreateEvent(NULL, TRUE, FALSE, NULL); // currently never signaled;
+		m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
+		m_ReadThreadArgs.hwndMainDlg = m_hWnd;
+		m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CCOMHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
+	}
+	else
+		CCOMHostDlg::ShowLastError(_T("CreateFile(..., GENERIC_READ, ...)"));
 
 	return S_OK;
 }
@@ -392,7 +400,10 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 	{
 		if (FALSE == ::ReadFile(pArgs->hCOMPort, rgCommand, 1, NULL, &s_Overlapped))
 		{
-			_ASSERT(ERROR_IO_PENDING == ::GetLastError());
+			const DWORD dwLastError = ::GetLastError();
+			if(dwLastError != ERROR_IO_PENDING)
+				CCOMHostDlg::ShowLastError(_T("::ReadFile() Failed"), &dwLastError);
+
 			const DWORD dwEvent = ::WaitForMultipleObjects(_countof(rgHandles), rgHandles, FALSE, 10000);
 			if (WAIT_TIMEOUT == dwEvent)
 			{

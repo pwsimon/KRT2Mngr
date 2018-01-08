@@ -150,7 +150,11 @@ function uploadToKRT2() {
 	<div class="frequence" data-bind="sevenSeg: { digits: 6, value: station, allowInput: true, step: 0.025, decimalPlaces: 3 }"></div>
 	<hr/>
 	<input id="frequence" type="hidden" data-bind="value: station, valueUpdate: 'afterkeydown'" >
-	<p><span id="command"></span><button id="btnSend">Send</button></p>
+	<p>
+		<span id="command"></span>
+		<button id="btnSend">Send</button>
+		<button id="btnRead">Read</button>
+	</p>
 	<ol id="stations"></ol>
 	<hr />
 	<input type="file" id="file-input" />

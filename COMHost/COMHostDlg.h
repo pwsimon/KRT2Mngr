@@ -17,7 +17,7 @@ public:
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX); // DDX/DDV support
-	static HRESULT ShowLastError(LPCTSTR szCaption);
+	static HRESULT ShowLastError(LPCTSTR szCaption, const DWORD* pdwLastError = NULL);
 
 	HRESULT OnSend(IHTMLElement* pElement);
 	HRESULT OnRead(IHTMLElement* pElement);
@@ -25,7 +25,7 @@ protected:
 // Implementation
 protected:
 	HICON m_hIcon;
-	HANDLE m_hCOMx;
+	HANDLE m_hCOMWrite;
 	struct _ReadThreadArg {
 		HWND hwndMainDlg;
 		HANDLE hCOMPort;
