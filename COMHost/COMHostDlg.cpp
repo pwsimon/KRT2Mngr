@@ -285,6 +285,7 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	{
 		/*
 		* Creating and Opening Files, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363874(v=vs.85).aspx
+		* das funktioniert offensichtlich fuer FILES aber nicht fuer COM Ports
 		* m_hCOMWrite               => GENERIC_WRITE, FILE_SHARE_READ
 		* m_ReadThreadArgs.hCOMPort => GENERIC_READ,  FILE_SHARE_WRITE
 		*/
@@ -334,12 +335,12 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	if (::WriteFile(m_hCOMWrite, rgCommand, uiIndex, &dwNumBytesWritten, NULL))
 		_ASSERT(uiIndex == dwNumBytesWritten);
 	else
-		CCOMHostDlg::ShowLastError(_T("::WriteFile() Failed"));
+		CCOMHostDlg::ShowLastError(_T("::WriteFile()"));
 
 	DWORD dwErrors = 0;
 	COMSTAT COMStat;
 	if (!::ClearCommError(m_hCOMWrite, &dwErrors, &COMStat))
-		CCOMHostDlg::ShowLastError(_T("::ClearCommError() Failed"));
+		CCOMHostDlg::ShowLastError(_T("::ClearCommError()"));
 
 	return S_OK;
 }
@@ -351,7 +352,7 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	const DWORD dwMessageId = pdwLastError ? *pdwLastError : ::GetLastError();
 
 	CString strCaption;
-	strCaption.Format(_T("%s returned: 0x%.8x"), (LPCTSTR)strCaption, dwMessageId);
+	strCaption.Format(_T("%s returned: 0x%.8x"), szCaption, dwMessageId);
 
 	CString strDesc;
 	DWORD dwRetC = ::FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM,
@@ -402,7 +403,7 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 		{
 			const DWORD dwLastError = ::GetLastError();
 			if(dwLastError != ERROR_IO_PENDING)
-				CCOMHostDlg::ShowLastError(_T("::ReadFile() Failed"), &dwLastError);
+				CCOMHostDlg::ShowLastError(_T("::ReadFile()"), &dwLastError);
 
 			const DWORD dwEvent = ::WaitForMultipleObjects(_countof(rgHandles), rgHandles, FALSE, 10000);
 			if (WAIT_TIMEOUT == dwEvent)
