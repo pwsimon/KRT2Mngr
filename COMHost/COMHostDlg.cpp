@@ -45,7 +45,7 @@ END_MESSAGE_MAP()
 #define WM_USER_RXSINGLEBYTE    (WM_USER + 1) // posted from COMReadThread
 #define WM_USER_RXDECODEDCMD    (WM_USER + 2)
 
-OVERLAPPED s_Overlapped;
+OVERLAPPED s_OverlappedRead;
 
 BEGIN_DHTML_EVENT_MAP(CCOMHostDlg)
 	DHTML_EVENT_ONCLICK(_T("btnSend"), OnSend)
@@ -63,7 +63,20 @@ CCOMHostDlg::CCOMHostDlg(CWnd* pParent /*=NULL*/)
 	: CDHtmlDialog(IDD_COMHOST_DIALOG, IDR_HTML_COMHOST_DIALOG, pParent)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
-	m_hCOMWrite = INVALID_HANDLE_VALUE;
+#ifdef KRT2OUTPUT
+	m_hFileWrite = INVALID_HANDLE_VALUE;
+#endif
+	::ZeroMemory(&m_OverlappedWrite, sizeof(OVERLAPPED));
+	m_OverlappedWrite.hEvent = ::CreateEvent(NULL, TRUE, FALSE, NULL); // manual reset is required for overlapped I/O
+	m_OverlappedWrite.Internal;
+	m_OverlappedWrite.Offset;
+	m_OverlappedWrite.Pointer;
+
+	m_ReadThreadArgs.hCOMPort = INVALID_HANDLE_VALUE;
+	m_ReadThreadArgs.hEvtCOMPort = ::CreateEvent(NULL, TRUE, FALSE, NULL); // currently never signaled;
+	m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
+	m_ReadThreadArgs.hwndMainDlg = NULL;
+
 	m_hReadThread = INVALID_HANDLE_VALUE;
 }
 
@@ -117,7 +130,67 @@ BOOL CCOMHostDlg::OnInitDialog()
 	SetIcon(m_hIcon, TRUE); // Set big icon
 	SetIcon(m_hIcon, FALSE); // Set small icon
 
-	// TODO: Add extra initialization here
+	/*
+	* TODO: Add extra initialization here
+	* das initialisieren des Input/Output stream gleich hier ist mir etwas zu "hart"
+	*/
+	{
+		/*
+		* Serial Port Sample, https://code.msdn.microsoft.com/windowsdesktop/Serial-Port-Sample-e8accf30/sourcecode?fileId=67164&pathId=1394200469
+		* COM1 = \Device\RdpDrPort\;COM1:1\tsclient\COM1
+		* auf ASUSPROI5 ist COM5 ein virtueller (ausgehender) Port mit SSP zu KRT21885
+		*
+		* Communications Resources
+		* The CreateFile function can create a handle to a communications resource, such as the serial port COM1.
+		* For communications resources, the dwCreationDisposition parameter must be OPEN_EXISTING, the dwShareMode parameter must be zero (exclusive access), and the hTemplateFile parameter must be NULL.
+		* Read, write, or read/write access can be specified, and the handle can be opened for overlapped I/O.
+		* To specify a COM port number greater than 9, use the following syntax: "\\.\COM10". This syntax works for all port numbers and hardware that allows COM port numbers to be specified.
+		* For more information about communications, see:
+		*   Communications, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363196(v=vs.85).aspx
+		*
+		* dummerweise bleibt bei der commandofolge CreateFile/CloseHandle irgendetwas haengen
+		* so das ich die commandofolge kein zweites mal ausfuehren kann???
+		*/
+	#ifdef KRT2OUTPUT
+		_ASSERT(INVALID_HANDLE_VALUE == m_hFileWrite);
+		/*
+		* wir koennen File und Device Handle NICHT einfach tauschen. u.A. wegen unterschiedlicher ShareMode.
+		* gem. der strategie des kleinsten gemeinsamen nenner waehlen wir EIN HANDLE das mit Read/Write access eroeffnet wird.
+		* Creating and Opening Files, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363874(v=vs.85).aspx
+		* Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
+		*   The Platform SDK documentation states that when opening a communications port, the call to CreateFile has the following requirements:
+		*   - fdwShareMode must be zero. Communications ports cannot be shared in the same manner that files are shared.
+		*     Applications using TAPI can use the TAPI functions to facilitate sharing resources between applications.
+		*     For applications not using TAPI, handle inheritance or duplication is necessary to share the communications port.
+		*     Handle duplication is beyond the scope of this article; please refer to the Platform SDK documentation for more information.
+		*   - fdwCreate must specify the OPEN_EXISTING flag.
+		*   - hTemplateFile parameter must be NULL
+		*/
+		m_hFileWrite = ::CreateFile(KRT2OUTPUT, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_FLAG_OVERLAPPED, NULL);
+		if (INVALID_HANDLE_VALUE == m_hFileWrite)
+			CCOMHostDlg::ShowLastError(_T("::CreateFile(") KRT2OUTPUT _T(", GENERIC_WRITE, ...)"));
+	#endif
+
+	#ifdef KRT2INPUT
+		_ASSERT(INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort);
+		m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2INPUT, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+		if (INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort)
+			CCOMHostDlg::ShowLastError(_T("CreateFile(") KRT2INPUT _T(", GENERIC_READ, ...)"));
+	#endif
+
+	#ifdef KRT2COMPORT
+		_ASSERT(INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort);
+		m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2COMPORT, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+		if (INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort)
+			CCOMHostDlg::ShowLastError(_T("::CreateFile(") KRT2COMPORT _T(", GENERIC_READ | GENERIC_WRITE, ...)"));
+	#endif
+
+		if (INVALID_HANDLE_VALUE != m_ReadThreadArgs.hCOMPort)
+		{
+			m_ReadThreadArgs.hwndMainDlg = m_hWnd;
+			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CCOMHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
+		}
+	}
 
 	return TRUE; // return TRUE  unless you set the focus to a control
 }
@@ -195,22 +268,31 @@ LRESULT CCOMHostDlg::OnRXDecodedCmd(WPARAM wParam, LPARAM lParam)
 {
 	ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::OnRXDecodedCmd(0x%.2x): %s\n"), LOWORD(wParam), (LPCTSTR)lParam);
 	CComBSTR bstrCommand = (LPCTSTR) lParam;
-	delete[] (PTCHAR) lParam;
+	delete (PTCHAR) lParam;
 	SetElementText(_T("command"), bstrCommand);
 	return 0;
 }
 
 void CCOMHostDlg::OnClose()
 {
-	if (INVALID_HANDLE_VALUE != m_hCOMWrite)
+#ifdef KRT2OUTPUT
+	if (INVALID_HANDLE_VALUE != m_hFileWrite)
 	{
-		::CloseHandle(m_hCOMWrite);
-		m_hCOMWrite = INVALID_HANDLE_VALUE;
+		::CloseHandle(m_hFileWrite);
+		m_hFileWrite = INVALID_HANDLE_VALUE;
+	}
+#endif
+
+	::CloseHandle(m_OverlappedWrite.hEvent);
+	m_OverlappedWrite.hEvent = INVALID_HANDLE_VALUE;
+
+	if (INVALID_HANDLE_VALUE != m_hReadThread)
+	{
+		// ::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread, 5000, FALSE);
+		CCOMHostDlg::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread);
+		::CloseHandle(m_hReadThread);
 	}
 
-	// ::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread, 5000, FALSE);
-	CCOMHostDlg::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread);
-	::CloseHandle(m_hReadThread);
 	m_hReadThread = INVALID_HANDLE_VALUE;
 	::CloseHandle(m_ReadThreadArgs.hEvtTerminate);
 	m_ReadThreadArgs.hEvtTerminate = INVALID_HANDLE_VALUE;
@@ -260,50 +342,20 @@ void CCOMHostDlg::OnClose()
 * 6.) 'J', RX
 * 7.) 'V', release RX
 */
-// #define KRT2INPUT  _T("krt2input.bin")
-#define KRT2INPUT  _T("COM5")
-#define KRT2OUTPUT _T("COM5")
 HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 {
-	/*
-	* Serial Port Sample, https://code.msdn.microsoft.com/windowsdesktop/Serial-Port-Sample-e8accf30/sourcecode?fileId=67164&pathId=1394200469
-	* COM1 = \Device\RdpDrPort\;COM1:1\tsclient\COM1
-	* auf ASUSPROI5 ist COM5 ein virtueller (ausgehender) Port mit SSP zu KRT21885
-	*
-	* Communications Resources
-	* The CreateFile function can create a handle to a communications resource, such as the serial port COM1.
-	* For communications resources, the dwCreationDisposition parameter must be OPEN_EXISTING, the dwShareMode parameter must be zero (exclusive access), and the hTemplateFile parameter must be NULL.
-	* Read, write, or read/write access can be specified, and the handle can be opened for overlapped I/O.
-	* To specify a COM port number greater than 9, use the following syntax: "\\.\COM10". This syntax works for all port numbers and hardware that allows COM port numbers to be specified.
-	* For more information about communications, see:
-	*   Communications, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363196(v=vs.85).aspx
-	*
-	* dummerweise bleibt bei der commandofolge CreateFile/CloseHandle irgendetwas haengen
-	* so das ich die commandofolge kein zweites mal ausfuehren kann???
-	*/
-	if (INVALID_HANDLE_VALUE == m_hCOMWrite)
-	{
-		/*
-		* Creating and Opening Files, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363874(v=vs.85).aspx
-		* das funktioniert offensichtlich fuer FILES aber nicht fuer COM Ports
-		* m_hCOMWrite               => GENERIC_WRITE, FILE_SHARE_READ
-		* m_ReadThreadArgs.hCOMPort => GENERIC_READ,  FILE_SHARE_WRITE
-		*/
-		m_hCOMWrite = ::CreateFile(KRT2OUTPUT, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (INVALID_HANDLE_VALUE == m_hCOMWrite)
-			return CCOMHostDlg::ShowLastError(_T("::CreateFile(..., GENERIC_WRITE, ...)"));
-	}
-
+#ifdef KRT2COMPORT
 	DCB dcb;
 	::ZeroMemory(&dcb, sizeof(DCB));
 	dcb.DCBlength = sizeof(DCB);
-	BOOL bRetC = ::GetCommState(m_hCOMWrite, &dcb);
+	BOOL bRetC = ::GetCommState(m_ReadThreadArgs.hCOMPort, &dcb);
 
 	/* COMMPROP CommProp;
-	bRetC = ::GetCommProperties(m_hCOMWrite, &CommProp);
+	bRetC = ::GetCommProperties(m_ReadThreadArgs.hCOMPort, &CommProp);
 
 	COMMTIMEOUTS CommTimeouts;
-	bRetC = ::GetCommTimeouts(m_hCOMWrite, &CommTimeouts); */
+	bRetC = ::GetCommTimeouts(m_ReadThreadArgs.hCOMPort, &CommTimeouts); */
+#endif
 
 	/*
 	* bstrCommand enthaelt die hexcodierten bytes space delemitted
@@ -330,17 +382,68 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 	* nur fuer hex-codiert mit PreFix 0xFF UND finalem space
 	_ASSERT(uiIndex == strCommand.GetLength() / 5);
 	*/
+#ifdef KRT2OUTPUT
+	if (FALSE == ::WriteFile(m_hFileWrite, rgCommand, uiIndex, NULL, &m_OverlappedWrite))
+	{
+		const DWORD dwLastError = ::GetLastError();
+		if (dwLastError != ERROR_IO_PENDING)
+			CCOMHostDlg::ShowLastError(_T("::WriteFile()"), &dwLastError);
 
-	DWORD dwNumBytesWritten;
-	if (::WriteFile(m_hCOMWrite, rgCommand, uiIndex, &dwNumBytesWritten, NULL))
+		// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+		DWORD dwNumBytesWritten = -1;
+		// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+		if (FALSE == ::GetOverlappedResult(m_hFileWrite, &m_OverlappedWrite, &dwNumBytesWritten, TRUE))
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("  Port closed/EOF\n"));
+			DWORD dwError = ::GetLastError();
+			_ASSERT(ERROR_HANDLE_EOF == dwError);
+		}
+
 		_ASSERT(uiIndex == dwNumBytesWritten);
+		ATLTRACE2(atlTraceGeneral, 1, _T("  0x%.8x bytes send\n"), dwNumBytesWritten);
+	}
 	else
-		CCOMHostDlg::ShowLastError(_T("::WriteFile()"));
+	{
+		/*
+		* If an operation is completed immediately, an application needs to be ready to continue processing normally.
+		*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
+		*/
+	}
+#endif
+
+#ifdef KRT2COMPORT
+	if (FALSE == ::WriteFile(m_ReadThreadArgs.hCOMPort, rgCommand, uiIndex, NULL, &m_OverlappedWrite))
+	{
+		const DWORD dwLastError = ::GetLastError();
+		if (dwLastError != ERROR_IO_PENDING)
+			CCOMHostDlg::ShowLastError(_T("::WriteFile()"), &dwLastError);
+
+		// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+		DWORD dwNumBytesWritten = -1;
+		// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+		if (FALSE == ::GetOverlappedResult(m_ReadThreadArgs.hCOMPort, &m_OverlappedWrite, &dwNumBytesWritten, TRUE))
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("  Port closed/EOF\n"));
+			DWORD dwError = ::GetLastError();
+			_ASSERT(ERROR_HANDLE_EOF == dwError);
+		}
+
+		_ASSERT(uiIndex == dwNumBytesWritten);
+		ATLTRACE2(atlTraceGeneral, 1, _T("  0x%.8x bytes send\n"), dwNumBytesWritten);
+	}
+	else
+	{
+		/*
+		* If an operation is completed immediately, an application needs to be ready to continue processing normally.
+		*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
+		*/
+	}
 
 	DWORD dwErrors = 0;
 	COMSTAT COMStat;
-	if (!::ClearCommError(m_hCOMWrite, &dwErrors, &COMStat))
+	if (!::ClearCommError(m_ReadThreadArgs.hCOMPort, &dwErrors, &COMStat))
 		CCOMHostDlg::ShowLastError(_T("::ClearCommError()"));
+#endif
 
 	return S_OK;
 }
@@ -369,17 +472,9 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 
 HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 {
-	const DWORD dwFlags = FILE_FLAG_OVERLAPPED; // fuer "COM<Port>" ist das FILE_ATTRIBUTE_NORMAL evtl. ueberfluessig
-	m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2INPUT, GENERIC_READ, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, dwFlags, NULL);
-	if (INVALID_HANDLE_VALUE != m_ReadThreadArgs.hCOMPort)
-	{
-		m_ReadThreadArgs.hEvtCOMPort = ::CreateEvent(NULL, TRUE, FALSE, NULL); // currently never signaled;
-		m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
-		m_ReadThreadArgs.hwndMainDlg = m_hWnd;
-		m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CCOMHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
-	}
-	else
-		CCOMHostDlg::ShowLastError(_T("CreateFile(..., GENERIC_READ, ...)"));
+#ifdef KRT2INPUT
+	_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hCOMPort); // passiert in InitDialog()
+#endif
 
 	return S_OK;
 }
@@ -387,19 +482,20 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 /*static*/ unsigned int CCOMHostDlg::COMReadThread(void* arguments)
 {
 	struct _ReadThreadArg* pArgs = (struct _ReadThreadArg*) arguments;
+	_ASSERT(NULL != pArgs->hwndMainDlg);
 
 	BYTE rgCommand[0x01]; // wir muessen BYTE weise lesen denn es gibt auch KRT2 commands die nur EIN BYTE lang sind z.B. 'S'
 	::ZeroMemory(rgCommand, _countof(rgCommand));
-	::ZeroMemory(&s_Overlapped, sizeof(OVERLAPPED));
-	s_Overlapped.hEvent = ::CreateEvent(NULL, TRUE, FALSE, NULL); // manual reset is required for overlapped I/O
-	s_Overlapped.Internal;
-	s_Overlapped.Offset;
-	s_Overlapped.Pointer;
+	::ZeroMemory(&s_OverlappedRead, sizeof(OVERLAPPED));
+	s_OverlappedRead.hEvent = ::CreateEvent(NULL, TRUE, FALSE, NULL); // manual reset is required for overlapped I/O
+	s_OverlappedRead.Internal;
+	s_OverlappedRead.Offset;
+	s_OverlappedRead.Pointer;
 
-	HANDLE rgHandles[3] = { pArgs->hEvtTerminate, pArgs->hEvtCOMPort, s_Overlapped.hEvent };
+	HANDLE rgHandles[3] = { pArgs->hEvtTerminate, pArgs->hEvtCOMPort, s_OverlappedRead.hEvent };
 	while(TRUE)
 	{
-		if (FALSE == ::ReadFile(pArgs->hCOMPort, rgCommand, 1, NULL, &s_Overlapped))
+		if (FALSE == ::ReadFile(pArgs->hCOMPort, rgCommand, 1, NULL, &s_OverlappedRead))
 		{
 			const DWORD dwLastError = ::GetLastError();
 			if(dwLastError != ERROR_IO_PENDING)
@@ -432,12 +528,12 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 
 			else if (WAIT_OBJECT_0 + 2 == dwEvent)
 			{
-				ATLTRACE2(atlTraceGeneral, 1, _T("s_Overlapped.hEvent signaled\n"));
+				ATLTRACE2(atlTraceGeneral, 1, _T("s_OverlappedRead.hEvent signaled\n"));
 
 				// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
 				DWORD dwNumberOfBytesRead = -1;
 				// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
-				if (FALSE == ::GetOverlappedResult(pArgs->hCOMPort, &s_Overlapped, &dwNumberOfBytesRead, FALSE))
+				if (FALSE == ::GetOverlappedResult(pArgs->hCOMPort, &s_OverlappedRead, &dwNumberOfBytesRead, FALSE))
 				{
 					ATLTRACE2(atlTraceGeneral, 0, _T("  Port closed/EOF\n"));
 					DWORD dwError = ::GetLastError();
@@ -453,7 +549,7 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 				* Once an overlapped operation is complete, the OVERLAPPED structure and its event are free for reuse.
 				*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
 				*/
-				s_Overlapped.Offset += dwNumberOfBytesRead;
+				s_OverlappedRead.Offset += dwNumberOfBytesRead;
 
 				ATLTRACE2(atlTraceGeneral, 1, _T("  process 0x%.8x\n"), rgCommand[0]);
 #ifdef DISPATCH_LOWLEVEL_BYTERECEIVE
@@ -489,6 +585,8 @@ HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
 		}
 	}
 
+	::CloseHandle(s_OverlappedRead.hEvent);
+	s_OverlappedRead.hEvent = INVALID_HANDLE_VALUE;
 	ATLTRACE2(atlTraceGeneral, 0, _T("Leave COMReadThread()\n"));
 	return 0;
 }

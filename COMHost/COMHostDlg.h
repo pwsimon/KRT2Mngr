@@ -25,7 +25,10 @@ protected:
 // Implementation
 protected:
 	HICON m_hIcon;
-	HANDLE m_hCOMWrite;
+#ifdef KRT2OUTPUT
+	HANDLE m_hFileWrite;
+#endif
+	OVERLAPPED m_OverlappedWrite;
 	struct _ReadThreadArg {
 		HWND hwndMainDlg;
 		HANDLE hCOMPort;
