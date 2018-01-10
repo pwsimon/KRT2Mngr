@@ -1,6 +1,37 @@
 <HTML>
 
 <HEAD>
+	<script type="text/javascript">
+/*
+* weil das aktuell mit res:// geladen wird haben wir documentMode: 5, da geht kein addEventListener
+window.onload = function () {
+	document.getElementById("btnSend").addEventListener("click", function () {
+		window.external.sendCommand("S", function () {
+			console.log("callback");
+		});
+	});
+} */
+
+/*
+* wir haben hier EINE zweite ebene (ProtocolLayer)
+* das "KEEPALIVE" ('S') wird auf der ersten ebene behandelt und ist hier unsichtbar
+* nachdem auf diesem Layer nichts verlorengehen kann braucht es hier auch kein ack/nak
+*
+* receiveCommand holt ein command. die funktion blockiert niemals.
+* Hinweis(e):
+* - wenn der sender die commands schneller schickt als der client sie konsumieren kann gehen sie verloren.
+*/
+function receiveCommand() {
+	window.external.receiveCommand(function (sJSONCommand) {
+		document.getElementById('command').innerText = sJSONCommand;
+	});
+}
+function sendCommand() {
+	window.external.sendCommand('S', function () {
+		document.getElementById('command').innerText = 'here we go';
+	});
+}
+	</script>
 </HEAD>
 
 <BODY ID=CCOMHostDlg BGCOLOR=LIGHTGREY style="font-family:MS Shell Dlg;font-size:8">
@@ -11,7 +42,8 @@
 </TR>
 <TR WIDTH=100% HEIGHT=100%>
 <TD ALIGN=RIGHT VALIGN=BOTTOM>
-<BUTTON STYLE="WIDTH:100" ID="btnSend">Send</BUTTON>&nbsp;<BUTTON STYLE="WIDTH:100" ID="btnRead">Read</BUTTON>
+<BUTTON STYLE="WIDTH:100" ID="btnSend" onclick="sendCommand()">Send</BUTTON>&nbsp;
+<BUTTON STYLE="WIDTH:100" ID="btnRead" onclick="receiveCommand()">Read</BUTTON>
 </TD>
 </TR>
 </TABLE>

@@ -6,6 +6,7 @@ variante 1: (COMHost.exe) via COM Port,
 variante 2: (BTHost.exe) echter zugriff ueber die BT API
 
 History: (der letzte/neueste eintrag steht oben)
+- die API des COMHost ist jetzt ueber window.external erreichbar
 - COMPorts koennen im gegensatz zu Files NICHT MEHRFACH eroeffnet werden
 - fluechtigkeits fehler in ShowLastError()
 - absturtz bei ShowLastError() behoben. MessageBox() bei Sharing violation

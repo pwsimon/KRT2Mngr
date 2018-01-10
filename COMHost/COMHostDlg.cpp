@@ -48,8 +48,6 @@ END_MESSAGE_MAP()
 OVERLAPPED s_OverlappedRead;
 
 BEGIN_DHTML_EVENT_MAP(CCOMHostDlg)
-	DHTML_EVENT_ONCLICK(_T("btnSend"), OnSend)
-	DHTML_EVENT_ONCLICK(_T("btnRead"), OnRead)
 END_DHTML_EVENT_MAP()
 
 BEGIN_MESSAGE_MAP(CCOMHostDlg, CDHtmlDialog)
@@ -59,9 +57,15 @@ BEGIN_MESSAGE_MAP(CCOMHostDlg, CDHtmlDialog)
 	ON_MESSAGE(WM_USER_RXDECODEDCMD, OnRXDecodedCmd)
 END_MESSAGE_MAP()
 
+BEGIN_DISPATCH_MAP(CCOMHostDlg, CDHtmlDialog)
+	DISP_FUNCTION(CCOMHostDlg, "sendCommand", sendCommand, VT_EMPTY, VTS_BSTR VTS_DISPATCH)
+	DISP_FUNCTION(CCOMHostDlg, "receiveCommand", receiveCommand, VT_EMPTY, VTS_DISPATCH)
+END_DISPATCH_MAP()
+
 CCOMHostDlg::CCOMHostDlg(CWnd* pParent /*=NULL*/)
 	: CDHtmlDialog(IDD_COMHOST_DIALOG, IDR_HTML_COMHOST_DIALOG, pParent)
 {
+	EnableAutomation();
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 #ifdef KRT2OUTPUT
 	m_hFileWrite = INVALID_HANDLE_VALUE;
@@ -85,8 +89,7 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 	CDHtmlDialog::DoDataExchange(pDX);
 }
 
-// CCOMHostDlg message handlers
-BOOL CCOMHostDlg::OnInitDialog()
+/*virtual*/ BOOL CCOMHostDlg::OnInitDialog()
 {
 	/*
 	* wir navigieren zu einer externen resource
@@ -104,6 +107,7 @@ BOOL CCOMHostDlg::OnInitDialog()
 		m_strCurrentUrl = cmdLI.m_strFileName;
 	CDHtmlDialog::OnInitDialog();
 	// Navigate(_T("http://localhost/krt2mngr/sevenseg.html"));
+	SetExternalDispatch((LPDISPATCH) GetInterface(&IID_IDispatch));
 
 	// Add "About..." menu item to system menu.
 
@@ -195,6 +199,12 @@ BOOL CCOMHostDlg::OnInitDialog()
 	return TRUE; // return TRUE  unless you set the focus to a control
 }
 
+/*virtual*/ BOOL CCOMHostDlg::IsExternalDispatchSafe()
+{
+	return TRUE; // __super::IsExternalDispatchSafe();
+}
+
+// CCOMHostDlg message handlers
 void CCOMHostDlg::OnSysCommand(UINT nID, LPARAM lParam)
 {
 	if ((nID & 0xFFF0) == IDM_ABOUTBOX)
@@ -266,11 +276,170 @@ LRESULT CCOMHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 
 LRESULT CCOMHostDlg::OnRXDecodedCmd(WPARAM wParam, LPARAM lParam)
 {
-	ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::OnRXDecodedCmd(0x%.2x): %s\n"), LOWORD(wParam), (LPCTSTR)lParam);
-	CComBSTR bstrCommand = (LPCTSTR) lParam;
+	if (!m_ddReceiveCommand)
+	{
+		if(m_bstrReceiveCommand.Length())
+			ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::OnRXDecodedCmd(0x%.2x) WARNING: buffer overrun\n"), LOWORD(wParam));
+
+		m_bstrReceiveCommand = (LPCTSTR)lParam;
+	}
+	else
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::OnRXDecodedCmd(0x%.2x): finish wait for command\n"), LOWORD(wParam));
+		ATLTRACE2(atlTraceGeneral, 1, _T("  %s\n"), (LPCTSTR)lParam);
+		m_ddReceiveCommand.Invoke1((DISPID)0, &CComVariant((LPCTSTR)lParam));
+		m_ddReceiveCommand.Release();
+	}
+
 	delete (PTCHAR) lParam;
-	SetElementText(_T("command"), bstrCommand);
 	return 0;
+}
+
+/*
+* dieses testfile enthaelt die folgenden UseCases:
+* 1.) 'R', 1.2.2 Set frequency & name on passive side, 126.900, PETER
+* 2.) 'O', 1.2.6 DUAL-mode on
+* 3.) 'o', 1.2.7 DUAL-mode off
+* 4.) 'B', low BATT
+* 5.) 'D', release low BATT
+* 6.) 'J', RX
+* 7.) 'V', release RX
+*/
+void CCOMHostDlg::sendCommand(
+	BSTR bstrCommand,
+	LPDISPATCH pCallback)
+{
+	ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::IDispatch::sendCommand(%ls)\n"), bstrCommand);
+
+#ifdef KRT2COMPORT
+	DCB dcb;
+	::ZeroMemory(&dcb, sizeof(DCB));
+	dcb.DCBlength = sizeof(DCB);
+	BOOL bRetC = ::GetCommState(m_ReadThreadArgs.hCOMPort, &dcb);
+
+	/* COMMPROP CommProp;
+	bRetC = ::GetCommProperties(m_ReadThreadArgs.hCOMPort, &CommProp);
+
+	COMMTIMEOUTS CommTimeouts;
+	bRetC = ::GetCommTimeouts(m_ReadThreadArgs.hCOMPort, &CommTimeouts); */
+#endif
+
+	/*
+	* bstrCommand enthaelt die hexcodierten bytes space delemitted
+	* die codierung wird aktuell mit einem PreFix z.B. '0x' uebertragen
+	*
+	* Hinweis(e):
+	* - als generischen ansatz koennte man hier ein ByteArray uebergeben
+	*   da Arrays im JavaScript Objecte sind koennen wir NICHT EINAFCH via C/C++ darauf zugreifen
+	*/
+	CString strCommand(bstrCommand); // die variable koennen wir uns durch _tcstok_s() sparen
+	BYTE rgCommand[0x100];
+	int iStart = 0;
+	unsigned int uiIndex = 0;
+	CString strToken = strCommand.Tokenize(_T(" "), iStart);
+	for (uiIndex = 0; strToken.GetLength(); uiIndex += 1)
+	{
+		rgCommand[uiIndex] = _tcstol(strToken, NULL, 16);
+		strToken = strCommand.Tokenize(_T(" "), iStart);
+	}
+
+	/*
+	* die 5 ist natuerlich NICHT allgemein gueltig
+	* nur fuer hex-codiert mit PreFix 0xFF UND finalem space
+	_ASSERT(uiIndex == strCommand.GetLength() / 5);
+	*/
+#ifdef KRT2OUTPUT
+	if (FALSE == ::WriteFile(m_hFileWrite, rgCommand, uiIndex, NULL, &m_OverlappedWrite))
+	{
+		const DWORD dwLastError = ::GetLastError();
+		if (dwLastError != ERROR_IO_PENDING)
+			CCOMHostDlg::ShowLastError(_T("::WriteFile()"), &dwLastError);
+
+		// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+		DWORD dwNumBytesWritten = -1;
+		// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+		if (FALSE == ::GetOverlappedResult(m_hFileWrite, &m_OverlappedWrite, &dwNumBytesWritten, TRUE))
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("  Port closed/EOF\n"));
+			DWORD dwError = ::GetLastError();
+			_ASSERT(ERROR_HANDLE_EOF == dwError);
+		}
+
+		_ASSERT(uiIndex == dwNumBytesWritten);
+		ATLTRACE2(atlTraceGeneral, 1, _T("  0x%.8x bytes send\n"), dwNumBytesWritten);
+		m_OverlappedWrite.Offset += dwNumBytesWritten;
+	}
+	else
+	{
+		/*
+		* If an operation is completed immediately, an application needs to be ready to continue processing normally.
+		*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
+		*/
+	}
+#endif
+
+#ifdef KRT2COMPORT
+	if (FALSE == ::WriteFile(m_ReadThreadArgs.hCOMPort, rgCommand, uiIndex, NULL, &m_OverlappedWrite))
+	{
+		const DWORD dwLastError = ::GetLastError();
+		if (dwLastError != ERROR_IO_PENDING)
+			CCOMHostDlg::ShowLastError(_T("::WriteFile()"), &dwLastError);
+
+		// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+		DWORD dwNumBytesWritten = -1;
+		// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
+		if (FALSE == ::GetOverlappedResult(m_ReadThreadArgs.hCOMPort, &m_OverlappedWrite, &dwNumBytesWritten, TRUE))
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("  Port closed/EOF\n"));
+			DWORD dwError = ::GetLastError();
+			_ASSERT(ERROR_HANDLE_EOF == dwError);
+		}
+
+		_ASSERT(uiIndex == dwNumBytesWritten);
+		ATLTRACE2(atlTraceGeneral, 1, _T("  0x%.8x bytes send\n"), dwNumBytesWritten);
+		m_OverlappedWrite.Offset += dwNumBytesWritten;
+	}
+	else
+	{
+		/*
+		* If an operation is completed immediately, an application needs to be ready to continue processing normally.
+		*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
+		*/
+	}
+
+	DWORD dwErrors = 0;
+	COMSTAT COMStat;
+	if (!::ClearCommError(m_ReadThreadArgs.hCOMPort, &dwErrors, &COMStat))
+		CCOMHostDlg::ShowLastError(_T("::ClearCommError()"));
+#endif
+
+	/* handle execute callback wenn wir ein ack/nak empfangen
+	CComDispatchDriver dd(pCallback);
+	dd.Invoke0((DISPID) 0); */
+}
+
+/*
+* die GUI MUSS hier folgende strategie fahren:
+* mit dem Init muss die UI ein receiveCommand() absetzen. mit dem callback muss das receiveCommand() erneuert werden.
+* das hat den unschoenen nachteil das mit dem Close/Destroy immer der m_ddReceiveCommand geprueft und freigegeben werden muss.
+*/
+void CCOMHostDlg::receiveCommand(
+	LPDISPATCH pCallback)
+{
+	if (m_bstrReceiveCommand.Length())
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::IDispatch::receiveCommand() return buffered command (immediately)\n"));
+
+		CComDispatchDriver ddCallback(pCallback);
+		ddCallback.Invoke1((DISPID)0, &CComVariant(m_bstrReceiveCommand));
+		m_bstrReceiveCommand.Empty();
+	}
+	else
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::IDispatch::receiveCommand() return command if available\n"));
+
+		m_ddReceiveCommand = pCallback;
+	}
 }
 
 void CCOMHostDlg::OnClose()
@@ -332,122 +501,6 @@ void CCOMHostDlg::OnClose()
 	return dwThreadTerminated;
 }
 
-/*
-* dieses testfile enthaelt die folgenden UseCases:
-* 1.) 'R', 1.2.2 Set frequency & name on passive side, 126.900, PETER
-* 2.) 'O', 1.2.6 DUAL-mode on
-* 3.) 'o', 1.2.7 DUAL-mode off
-* 4.) 'B', low BATT
-* 5.) 'D', release low BATT
-* 6.) 'J', RX
-* 7.) 'V', release RX
-*/
-HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
-{
-#ifdef KRT2COMPORT
-	DCB dcb;
-	::ZeroMemory(&dcb, sizeof(DCB));
-	dcb.DCBlength = sizeof(DCB);
-	BOOL bRetC = ::GetCommState(m_ReadThreadArgs.hCOMPort, &dcb);
-
-	/* COMMPROP CommProp;
-	bRetC = ::GetCommProperties(m_ReadThreadArgs.hCOMPort, &CommProp);
-
-	COMMTIMEOUTS CommTimeouts;
-	bRetC = ::GetCommTimeouts(m_ReadThreadArgs.hCOMPort, &CommTimeouts); */
-#endif
-
-	/*
-	* bstrCommand enthaelt die hexcodierten bytes space delemitted
-	* die codierung wird aktuell mit einem PreFix z.B. '0x' uebertragen
-	*
-	* Hinweis(e):
-	* - als generischen ansatz koennte man hier ein ByteArray uebergeben
-	*   da Arrays im JavaScript Objecte sind koennen wir NICHT EINAFCH via C/C++ darauf zugreifen
-	*/
-	CComBSTR bstrCommand = GetElementText(_T("command"));
-	CString strCommand(bstrCommand); // die variable koennen wir uns durch _tcstok_s() sparen
-	BYTE rgCommand[0x100];
-	int iStart = 0;
-	unsigned int uiIndex = 0;
-	CString strToken = strCommand.Tokenize(_T(" "), iStart);
-	for (uiIndex = 0; strToken.GetLength(); uiIndex += 1)
-	{
-		rgCommand[uiIndex] = _tcstol(strToken, NULL, 16);
-		strToken = strCommand.Tokenize(_T(" "), iStart);
-	}
-
-	/*
-	* die 5 ist natuerlich NICHT allgemein gueltig
-	* nur fuer hex-codiert mit PreFix 0xFF UND finalem space
-	_ASSERT(uiIndex == strCommand.GetLength() / 5);
-	*/
-#ifdef KRT2OUTPUT
-	if (FALSE == ::WriteFile(m_hFileWrite, rgCommand, uiIndex, NULL, &m_OverlappedWrite))
-	{
-		const DWORD dwLastError = ::GetLastError();
-		if (dwLastError != ERROR_IO_PENDING)
-			CCOMHostDlg::ShowLastError(_T("::WriteFile()"), &dwLastError);
-
-		// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
-		DWORD dwNumBytesWritten = -1;
-		// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
-		if (FALSE == ::GetOverlappedResult(m_hFileWrite, &m_OverlappedWrite, &dwNumBytesWritten, TRUE))
-		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("  Port closed/EOF\n"));
-			DWORD dwError = ::GetLastError();
-			_ASSERT(ERROR_HANDLE_EOF == dwError);
-		}
-
-		_ASSERT(uiIndex == dwNumBytesWritten);
-		ATLTRACE2(atlTraceGeneral, 1, _T("  0x%.8x bytes send\n"), dwNumBytesWritten);
-	}
-	else
-	{
-		/*
-		* If an operation is completed immediately, an application needs to be ready to continue processing normally.
-		*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
-		*/
-	}
-#endif
-
-#ifdef KRT2COMPORT
-	if (FALSE == ::WriteFile(m_ReadThreadArgs.hCOMPort, rgCommand, uiIndex, NULL, &m_OverlappedWrite))
-	{
-		const DWORD dwLastError = ::GetLastError();
-		if (dwLastError != ERROR_IO_PENDING)
-			CCOMHostDlg::ShowLastError(_T("::WriteFile()"), &dwLastError);
-
-		// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
-		DWORD dwNumBytesWritten = -1;
-		// WaitCommEvent function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
-		if (FALSE == ::GetOverlappedResult(m_ReadThreadArgs.hCOMPort, &m_OverlappedWrite, &dwNumBytesWritten, TRUE))
-		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("  Port closed/EOF\n"));
-			DWORD dwError = ::GetLastError();
-			_ASSERT(ERROR_HANDLE_EOF == dwError);
-		}
-
-		_ASSERT(uiIndex == dwNumBytesWritten);
-		ATLTRACE2(atlTraceGeneral, 1, _T("  0x%.8x bytes send\n"), dwNumBytesWritten);
-	}
-	else
-	{
-		/*
-		* If an operation is completed immediately, an application needs to be ready to continue processing normally.
-		*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
-		*/
-	}
-
-	DWORD dwErrors = 0;
-	COMSTAT COMStat;
-	if (!::ClearCommError(m_ReadThreadArgs.hCOMPort, &dwErrors, &COMStat))
-		CCOMHostDlg::ShowLastError(_T("::ClearCommError()"));
-#endif
-
-	return S_OK;
-}
-
 /*static*/ HRESULT CCOMHostDlg::ShowLastError(
 	LPCTSTR szCaption,
 	const DWORD* pdwLastError /* = NULL */)
@@ -468,15 +521,6 @@ HRESULT CCOMHostDlg::OnSend(IHTMLElement* /*pElement*/)
 
 	::MessageBox(NULL, (LPCTSTR)strDesc, (LPCTSTR)strCaption, MB_OK);
 	return HRESULT_FROM_WIN32(dwMessageId);
-}
-
-HRESULT CCOMHostDlg::OnRead(IHTMLElement* /*pElement*/)
-{
-#ifdef KRT2INPUT
-	_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hCOMPort); // passiert in InitDialog()
-#endif
-
-	return S_OK;
 }
 
 /*static*/ unsigned int CCOMHostDlg::COMReadThread(void* arguments)

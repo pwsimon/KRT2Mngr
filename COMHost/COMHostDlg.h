@@ -19,9 +19,6 @@ protected:
 	virtual void DoDataExchange(CDataExchange* pDX); // DDX/DDV support
 	static HRESULT ShowLastError(LPCTSTR szCaption, const DWORD* pdwLastError = NULL);
 
-	HRESULT OnSend(IHTMLElement* pElement);
-	HRESULT OnRead(IHTMLElement* pElement);
-
 // Implementation
 protected:
 	HICON m_hIcon;
@@ -43,6 +40,7 @@ protected:
 
 	// Generated message map functions
 	virtual BOOL OnInitDialog();
+	virtual BOOL IsExternalDispatchSafe();
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
@@ -52,4 +50,9 @@ protected:
 
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
+	DECLARE_DISPATCH_MAP()
+	void sendCommand(BSTR bstrCommand, LPDISPATCH spCallback);
+	void receiveCommand(LPDISPATCH pCallback);
+	CComBSTR m_bstrReceiveCommand;
+	CComDispatchDriver m_ddReceiveCommand;
 };

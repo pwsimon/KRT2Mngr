@@ -7,8 +7,12 @@
 	<link rel="stylesheet" href="krt2panel.css">
 	<style>
 .frequence {
-	height: 25px;
-	width:  200px;
+	height:     25px;
+	width:      200px;
+}
+#stationsCont {
+	height:     300px;
+	overflow-y: scroll;
 }
 	</style>
 	<script src="//code.jquery.com/jquery-1.12.4.js"></script>
@@ -83,15 +87,11 @@ $(document).ready(function () {
 			});
 
 			$('#command').text(sCommand);
+			window.external.sendCommand(sCommand, function () { });
 			ko.applyBindings({ station: ko.observable(fAttrValue) });
 		}
 	});
-	/* $('file-input').on('change', function () {
-		console.log(this.target.files[0]);
-	});
-	$('file-input').on('change', PersistModul.readSingleFile); */
-	document.getElementById('file-input')
-		.addEventListener('change', PersistModul.readSingleFile, false);
+	$('#file-input').on('change', PersistModul.readSingleFile);
 });
 function uploadToKRT2() {
 	PersistModul.rgStations.forEach(function (station, nStationIndex) {
@@ -128,6 +128,8 @@ function uploadToKRT2() {
 			sCommand += " ";
 		});
 		console.log(sCommand);
+		$('#command').text(sCommand);
+		window.external.sendCommand(sCommand, function () { });
 	});
 }
 	</script>
@@ -155,7 +157,9 @@ function uploadToKRT2() {
 		<button id="btnSend">Send</button>
 		<button id="btnRead">Read</button>
 	</p>
-	<ol id="stations"></ol>
+	<div id="stationsCont">
+		<ol id="stations"></ol>
+	</div>
 	<hr />
 	<input type="file" id="file-input" />
 </body>

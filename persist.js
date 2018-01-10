@@ -16,7 +16,10 @@
 				var rgStations = e.target.result.split("\n");
 				PersistModul.rgStations = rgStations.map(function (currentValue, index, arr) {
 					var rgValues = currentValue.split(";");
-					return { sName: rgValues[0], nFrequence: parseFloat(rgValues[1]) * 1000 };
+					return {
+						sName: rgValues[0],
+						nFrequence: Math.round(parseFloat(rgValues[1]) * 1000) // ein parseFloat(128.950) * 1000 fuehrt seltsamerweise zu 128949.9999
+					};
 				});
 				console.log("read:", rgStations.length, " stations (rgStations.length)");
 			};
