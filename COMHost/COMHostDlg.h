@@ -50,6 +50,8 @@ protected:
 
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
+	HRESULT InitInputOutput(IHTMLElement*);
+
 	DECLARE_DISPATCH_MAP()
 	void sendCommand(BSTR bstrCommand, LPDISPATCH spCallback);
 	void receiveCommand(LPDISPATCH pCallback);

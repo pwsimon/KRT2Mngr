@@ -11,7 +11,7 @@
 	width:      200px;
 }
 #stationsCont {
-	height:     300px;
+	height:     200px; /* die bildschirmhoehe von meinem ASUSPRO5IJC ist NICHT ausreichend */
 	overflow-y: scroll;
 }
 	</style>
@@ -154,8 +154,8 @@ function uploadToKRT2() {
 	<input id="frequence" type="hidden" data-bind="value: station, valueUpdate: 'afterkeydown'" >
 	<p>
 		<span id="command"></span>
-		<button id="btnSend">Send</button>
-		<button id="btnRead">Read</button>
+		<button id="btnSoft1">Soft1</button>
+		<button id="btnSoft2">Soft2</button>
 	</p>
 	<div id="stationsCont">
 		<ol id="stations"></ol>

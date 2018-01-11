@@ -48,6 +48,7 @@ END_MESSAGE_MAP()
 OVERLAPPED s_OverlappedRead;
 
 BEGIN_DHTML_EVENT_MAP(CCOMHostDlg)
+	DHTML_EVENT_ONCLICK(_T("btnSoft1"), InitInputOutput) // soft buttons
 END_DHTML_EVENT_MAP()
 
 BEGIN_MESSAGE_MAP(CCOMHostDlg, CDHtmlDialog)
@@ -137,64 +138,8 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 	/*
 	* TODO: Add extra initialization here
 	* das initialisieren des Input/Output stream gleich hier ist mir etwas zu "hart"
+	InitInputOutput(NULL);
 	*/
-	{
-		/*
-		* Serial Port Sample, https://code.msdn.microsoft.com/windowsdesktop/Serial-Port-Sample-e8accf30/sourcecode?fileId=67164&pathId=1394200469
-		* COM1 = \Device\RdpDrPort\;COM1:1\tsclient\COM1
-		* auf ASUSPROI5 ist COM5 ein virtueller (ausgehender) Port mit SSP zu KRT21885
-		*
-		* Communications Resources
-		* The CreateFile function can create a handle to a communications resource, such as the serial port COM1.
-		* For communications resources, the dwCreationDisposition parameter must be OPEN_EXISTING, the dwShareMode parameter must be zero (exclusive access), and the hTemplateFile parameter must be NULL.
-		* Read, write, or read/write access can be specified, and the handle can be opened for overlapped I/O.
-		* To specify a COM port number greater than 9, use the following syntax: "\\.\COM10". This syntax works for all port numbers and hardware that allows COM port numbers to be specified.
-		* For more information about communications, see:
-		*   Communications, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363196(v=vs.85).aspx
-		*
-		* dummerweise bleibt bei der commandofolge CreateFile/CloseHandle irgendetwas haengen
-		* so das ich die commandofolge kein zweites mal ausfuehren kann???
-		*/
-	#ifdef KRT2OUTPUT
-		_ASSERT(INVALID_HANDLE_VALUE == m_hFileWrite);
-		/*
-		* wir koennen File und Device Handle NICHT einfach tauschen. u.A. wegen unterschiedlicher ShareMode.
-		* gem. der strategie des kleinsten gemeinsamen nenner waehlen wir EIN HANDLE das mit Read/Write access eroeffnet wird.
-		* Creating and Opening Files, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363874(v=vs.85).aspx
-		* Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
-		*   The Platform SDK documentation states that when opening a communications port, the call to CreateFile has the following requirements:
-		*   - fdwShareMode must be zero. Communications ports cannot be shared in the same manner that files are shared.
-		*     Applications using TAPI can use the TAPI functions to facilitate sharing resources between applications.
-		*     For applications not using TAPI, handle inheritance or duplication is necessary to share the communications port.
-		*     Handle duplication is beyond the scope of this article; please refer to the Platform SDK documentation for more information.
-		*   - fdwCreate must specify the OPEN_EXISTING flag.
-		*   - hTemplateFile parameter must be NULL
-		*/
-		m_hFileWrite = ::CreateFile(KRT2OUTPUT, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_FLAG_OVERLAPPED, NULL);
-		if (INVALID_HANDLE_VALUE == m_hFileWrite)
-			CCOMHostDlg::ShowLastError(_T("::CreateFile(") KRT2OUTPUT _T(", GENERIC_WRITE, ...)"));
-	#endif
-
-	#ifdef KRT2INPUT
-		_ASSERT(INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort);
-		m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2INPUT, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
-		if (INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort)
-			CCOMHostDlg::ShowLastError(_T("CreateFile(") KRT2INPUT _T(", GENERIC_READ, ...)"));
-	#endif
-
-	#ifdef KRT2COMPORT
-		_ASSERT(INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort);
-		m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2COMPORT, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
-		if (INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort)
-			CCOMHostDlg::ShowLastError(_T("::CreateFile(") KRT2COMPORT _T(", GENERIC_READ | GENERIC_WRITE, ...)"));
-	#endif
-
-		if (INVALID_HANDLE_VALUE != m_ReadThreadArgs.hCOMPort)
-		{
-			m_ReadThreadArgs.hwndMainDlg = m_hWnd;
-			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CCOMHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
-		}
-	}
 
 	return TRUE; // return TRUE  unless you set the focus to a control
 }
@@ -295,6 +240,67 @@ LRESULT CCOMHostDlg::OnRXDecodedCmd(WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
+HRESULT CCOMHostDlg::InitInputOutput(IHTMLElement*)
+{
+	/*
+	* Serial Port Sample, https://code.msdn.microsoft.com/windowsdesktop/Serial-Port-Sample-e8accf30/sourcecode?fileId=67164&pathId=1394200469
+	* COM1 = \Device\RdpDrPort\;COM1:1\tsclient\COM1
+	* auf ASUSPROI5 ist COM5 ein virtueller (ausgehender) Port mit SSP zu KRT21885
+	*
+	* Communications Resources
+	* The CreateFile function can create a handle to a communications resource, such as the serial port COM1.
+	* For communications resources, the dwCreationDisposition parameter must be OPEN_EXISTING, the dwShareMode parameter must be zero (exclusive access), and the hTemplateFile parameter must be NULL.
+	* Read, write, or read/write access can be specified, and the handle can be opened for overlapped I/O.
+	* To specify a COM port number greater than 9, use the following syntax: "\\.\COM10". This syntax works for all port numbers and hardware that allows COM port numbers to be specified.
+	* For more information about communications, see:
+	*   Communications, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363196(v=vs.85).aspx
+	*
+	* dummerweise bleibt bei der commandofolge CreateFile/CloseHandle irgendetwas haengen
+	* so das ich die commandofolge kein zweites mal ausfuehren kann???
+	*/
+#ifdef KRT2OUTPUT
+	_ASSERT(INVALID_HANDLE_VALUE == m_hFileWrite);
+	/*
+	* wir koennen File und Device Handle NICHT einfach tauschen. u.A. wegen unterschiedlicher ShareMode.
+	* gem. der strategie des kleinsten gemeinsamen nenner waehlen wir EIN HANDLE das mit Read/Write access eroeffnet wird.
+	* Creating and Opening Files, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363874(v=vs.85).aspx
+	* Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
+	*   The Platform SDK documentation states that when opening a communications port, the call to CreateFile has the following requirements:
+	*   - fdwShareMode must be zero. Communications ports cannot be shared in the same manner that files are shared.
+	*     Applications using TAPI can use the TAPI functions to facilitate sharing resources between applications.
+	*     For applications not using TAPI, handle inheritance or duplication is necessary to share the communications port.
+	*     Handle duplication is beyond the scope of this article; please refer to the Platform SDK documentation for more information.
+	*   - fdwCreate must specify the OPEN_EXISTING flag.
+	*   - hTemplateFile parameter must be NULL
+	*/
+	m_hFileWrite = ::CreateFile(KRT2OUTPUT, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_FLAG_OVERLAPPED, NULL);
+	if (INVALID_HANDLE_VALUE == m_hFileWrite)
+		CCOMHostDlg::ShowLastError(_T("::CreateFile(") KRT2OUTPUT _T(", GENERIC_WRITE, ...)"));
+#endif
+
+#ifdef KRT2INPUT
+	_ASSERT(INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort);
+	m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2INPUT, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+	if (INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort)
+		CCOMHostDlg::ShowLastError(_T("CreateFile(") KRT2INPUT _T(", GENERIC_READ, ...)"));
+#endif
+
+#ifdef KRT2COMPORT
+	_ASSERT(INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort);
+	m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2COMPORT, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+	if (INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort)
+		CCOMHostDlg::ShowLastError(_T("::CreateFile(") KRT2COMPORT _T(", GENERIC_READ | GENERIC_WRITE, ...)"));
+#endif
+
+	if (INVALID_HANDLE_VALUE != m_ReadThreadArgs.hCOMPort)
+	{
+		m_ReadThreadArgs.hwndMainDlg = m_hWnd;
+		m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CCOMHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
+	}
+
+	return NOERROR;
+}
+
 /*
 * dieses testfile enthaelt die folgenden UseCases:
 * 1.) 'R', 1.2.2 Set frequency & name on passive side, 126.900, PETER
@@ -383,7 +389,10 @@ void CCOMHostDlg::sendCommand(
 	{
 		const DWORD dwLastError = ::GetLastError();
 		if (dwLastError != ERROR_IO_PENDING)
+		{
 			CCOMHostDlg::ShowLastError(_T("::WriteFile()"), &dwLastError);
+			return;
+		}
 
 		// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
 		DWORD dwNumBytesWritten = -1;
