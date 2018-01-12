@@ -22,6 +22,7 @@ public:
 protected:
 	HICON m_hIcon;
 	int m_iRetCWSAStartup;
+	SOCKADDR_BTH m_addrKRT2;
 
 	// Generated message map functions
 	virtual BOOL OnInitDialog();
@@ -35,7 +36,7 @@ protected:
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
 	HRESULT OnCheck(IHTMLElement *pElement);
-	HRESULT OnButtonCancel(IHTMLElement *pElement);
+	HRESULT OnConnect(IHTMLElement *pElement);
 
 private:
 	HRESULT enumBTRadio(HANDLE& hRadio);

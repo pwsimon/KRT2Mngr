@@ -44,7 +44,7 @@ END_MESSAGE_MAP()
 // CBTHostDlg dialog
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
 	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnCheck) // soft buttons
-	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnButtonCancel)
+	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
 END_DHTML_EVENT_MAP()
 
 CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
@@ -52,6 +52,20 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 	m_iRetCWSAStartup = -1;
+	m_addrKRT2 = {
+		AF_BTH, // USHORT addressFamily;
+		BTH_ADDR_NULL, // BTH_ADDR btAddr;
+		CLSID_NULL, // GUID serviceClassId;
+		0UL // ULONG port;
+	};
+	/*
+	* Setting address family to AF_BTH indicates winsock2 to use Bluetooth sockets
+	* Port should be set to 0 if ServiceClassId is specified.
+	*/
+	m_addrKRT2.addressFamily = AF_BTH;
+	m_addrKRT2.btAddr = ((ULONGLONG)0x000098d331fd5af2); // KRT21885, Dev B
+	m_addrKRT2.serviceClassId = CLSID_NULL; // SerialPortServiceClass_UUID
+	m_addrKRT2.port = 1UL;
 }
 
 void CBTHostDlg::DoDataExchange(CDataExchange* pDX)
@@ -117,7 +131,7 @@ END_MESSAGE_MAP()
 {
 	// SetElementProperty(_T("btnSoft1"), DISPID_VALUE, &CComVariant(L"Check hurtz")); // for <input> elements
 	SetElementText(_T("btnSoft1"), _T("Check SPP"));
-	SetElementText(_T("btnSoft2"), _T("Cancel"));
+	SetElementText(_T("btnSoft2"), _T("Connect"));
 }
 
 void CBTHostDlg::OnClose()
@@ -186,9 +200,9 @@ HRESULT CBTHostDlg::OnCheck(IHTMLElement* /*pElement*/)
 	return S_OK;
 }
 
-HRESULT CBTHostDlg::OnButtonCancel(IHTMLElement* /*pElement*/)
+HRESULT CBTHostDlg::OnConnect(IHTMLElement* /*pElement*/)
 {
-	OnCancel();
+	Connect(&m_addrKRT2);
 	return S_OK;
 }
 
@@ -257,25 +271,36 @@ HRESULT CBTHostDlg::enumBTDevices(HANDLE hRadio)
 	return NOERROR;
 }
 
+#define TESTDATA_LENGTH   0x0a
 HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 {
+	char* pszData = (char*) ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, TESTDATA_LENGTH + 1);
+	memcpy_s(pszData, 0x0a, "here we go", 0x0a);
+
 	SOCKET LocalSocket = ::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
 	if (INVALID_SOCKET != LocalSocket)
 	{
-		if (SOCKET_ERROR == ::connect(LocalSocket,
-			(struct sockaddr *) pRemoteAddr,
-			sizeof(SOCKADDR_BTH))) {
-			CBTHostDlg::ShowWSALastError(_T("connect failed"));
+		SOCKET socketKRT2 = ::connect(LocalSocket, (struct sockaddr *) pRemoteAddr, sizeof(SOCKADDR_BTH));
+		if (INVALID_SOCKET != socketKRT2)
+		{
+			if (SOCKET_ERROR == ::send(LocalSocket, (char*)pszData, (int)TESTDATA_LENGTH, 0))
+				CBTHostDlg::ShowWSALastError(_T("::send(LocalSocket, ...)"));
 		}
+		else
+			CBTHostDlg::ShowWSALastError(_T("::connect(LocalSocket, ...)"));
 
 		if (SOCKET_ERROR == ::closesocket(LocalSocket))
-		{
-			CBTHostDlg::ShowWSALastError(_T("closesocket failed"));
-		}
+			CBTHostDlg::ShowWSALastError(_T("::closesocket"));
 
 		LocalSocket = INVALID_SOCKET;
 	}
+	else
+		CBTHostDlg::ShowWSALastError(_T("::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM)"));
 
+	if (NULL != pszData) {
+		::HeapFree(::GetProcessHeap(), 0, pszData);
+		pszData = NULL;
+	}
 	return E_FAIL;
 }
 
@@ -365,10 +390,32 @@ HRESULT CBTHostDlg::enumBTServices(
 			// ATLTRACE2(atlTraceGeneral, 0, _T("%ls\n"), pResults2->lpszServiceInstanceName);
 			if (pResults2->dwNumberOfCsAddrs && pResults2->lpcsaBuffer)
 			{
-				CSADDR_INFO * addrService = (CSADDR_INFO *)pResults2->lpcsaBuffer;
+				PCSADDR_INFO addrService = (PCSADDR_INFO) pResults2->lpcsaBuffer;
 				CComBSTR bstrAddress;
-				CBTHostDlg::BTAddressToString((PSOCKADDR_BTH)addrService->RemoteAddr.lpSockaddr, &bstrAddress);
-				ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults2->lpszServiceInstanceName, (LPCWSTR) bstrAddress);
+				/*
+				* nachdem ich DEFINITIV Bluetooth (devices/services) aufzaehle MUSS
+				* es sich bei addrService->RemoteAddr.lpSockaddr auch um eine BLUETOOTH_ADDRESS* handeln!
+				*/
+				// (BLUETOOTH_ADDRESS*)&lpAddress->btAddr
+				{
+					PSOCKADDR_BTH pSockAddrBT = (PSOCKADDR_BTH)addrService->RemoteAddr.lpSockaddr;
+					_ASSERT(AF_BTH == pSockAddrBT->addressFamily);
+					CBTHostDlg::BTAddressToString((BLUETOOTH_ADDRESS*)&pSockAddrBT->btAddr, &bstrAddress);
+					ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults2->lpszServiceInstanceName, (LPCWSTR)bstrAddress);
+
+					// MUSS die gleiche address/ergebnis haben wie oben nur MIT Port
+					CBTHostDlg::BTAddressToString((PSOCKADDR_BTH)addrService->RemoteAddr.lpSockaddr, &bstrAddress);
+					ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults2->lpszServiceInstanceName, (LPCWSTR)bstrAddress);
+				}
+
+				/*
+				* eigentlich wuerde ich am liebsten AUSSCHLIESSLICH mit einer BLUETOOTH_ADDRESS dealen.
+				* fuer das Connect() brauch ich aber unbedingt eine PSOCKADDR_BTH pRemoteAddr.
+				* wie erweitert/baut man eine CSADDR_INFO/SOCKET_ADDRESS bzw. SOCKADDR_BTH wenn man NUR eine BLUETOOTH_ADDRESS hat?
+				* Hinweis(e):
+				* 1.) eine SOCKET_ADDRESS ist eine SOCKADDR_BTH
+				*/
+				m_addrKRT2 = *((PSOCKADDR_BTH) addrService->RemoteAddr.lpSockaddr);
 				// Connect((PSOCKADDR_BTH)addrService->RemoteAddr.lpSockaddr);
 			}
 		}
@@ -588,7 +635,10 @@ HRESULT CBTHostDlg::enumBTServices(
 		pBTAddr->rgBytes[3], pBTAddr->rgBytes[2],
 		pBTAddr->rgBytes[1], pBTAddr->rgBytes[0]);
 
-	*pbstrAddress = ::SysAllocString(lpszAddressString);
+	if(NULL != *pbstrAddress)
+		::SysReAllocString(pbstrAddress, lpszAddressString);
+	else
+		*pbstrAddress = ::SysAllocString(lpszAddressString);
 	return NO_ERROR;
 }
 
@@ -613,7 +663,10 @@ HRESULT CBTHostDlg::enumBTServices(
 			pBTAddr->rgBytes[1], pBTAddr->rgBytes[0],
 			lpAddress->port);
 
-	*pbstrAddress = ::SysAllocString(lpszAddressString);
+	if (NULL != *pbstrAddress)
+		::SysReAllocString(pbstrAddress, lpszAddressString);
+	else
+		*pbstrAddress = ::SysAllocString(lpszAddressString);
 	return NOERROR;
 }
 
