@@ -61,11 +61,11 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	/*
 	* Setting address family to AF_BTH indicates winsock2 to use Bluetooth sockets
 	* Port should be set to 0 if ServiceClassId is specified.
-	*/
 	m_addrKRT2.addressFamily = AF_BTH;
-	m_addrKRT2.btAddr = ((ULONGLONG)0x000098d331fd5af2); // KRT21885, Dev B
+	m_addrKRT2.btAddr = ((ULONGLONG)0x000098d331fd5af2); // KRT21885, Dev B => (98:D3:31:FD:5A:F2)
 	m_addrKRT2.serviceClassId = CLSID_NULL; // SerialPortServiceClass_UUID
 	m_addrKRT2.port = 1UL;
+	*/
 }
 
 void CBTHostDlg::DoDataExchange(CDataExchange* pDX)
@@ -202,7 +202,13 @@ HRESULT CBTHostDlg::OnCheck(IHTMLElement* /*pElement*/)
 
 HRESULT CBTHostDlg::OnConnect(IHTMLElement* /*pElement*/)
 {
-	Connect(&m_addrKRT2);
+	HRESULT hr = CBTHostDlg::NameToBthAddr(L"KRT21885", &m_addrKRT2);
+	if (SUCCEEDED(hr))
+	{
+		m_addrKRT2.port = 1UL;
+		Connect(&m_addrKRT2);
+	}
+
 	return S_OK;
 }
 
@@ -416,7 +422,6 @@ HRESULT CBTHostDlg::enumBTServices(
 				* 1.) eine SOCKET_ADDRESS ist eine SOCKADDR_BTH
 				*/
 				m_addrKRT2 = *((PSOCKADDR_BTH) addrService->RemoteAddr.lpSockaddr);
-				// Connect((PSOCKADDR_BTH)addrService->RemoteAddr.lpSockaddr);
 			}
 		}
 	}
@@ -428,9 +433,9 @@ HRESULT CBTHostDlg::enumBTServices(
 }
 
 /*
-* NameToBthAddr converts a bluetooth device name to a bluetooth address, 
-* if required by performing inquiry with remote name requests. 
-* This function demonstrates device inquiry, with optional LUP flags. 
+* NameToBthAddr converts a bluetooth device name to a bluetooth address,
+* if required by performing inquiry with remote name requests.
+* This function demonstrates device inquiry, with optional LUP flags.
 */
 #define CXN_TEST_DATA_STRING              (L"~!@#$%^&*()-_=+?<>1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") 
 #define CXN_TRANSFER_DATA_LENGTH          (sizeof(CXN_TEST_DATA_STRING)) 
@@ -438,114 +443,113 @@ HRESULT CBTHostDlg::enumBTServices(
 #define CXN_BDADDR_STR_LEN                17   // 6 two-digit hex values plus 5 colons 
 #define CXN_MAX_INQUIRY_RETRY             3
 #define CXN_DELAY_NEXT_INQUIRY            15
-#define CXN_SUCCESS                       0
 #define CXN_ERROR                         1
 #define CXN_DEFAULT_LISTEN_BACKLOG        4
-/*static*/ ULONG CBTHostDlg::NameToBthAddr(
+/*static*/ HRESULT CBTHostDlg::NameToBthAddr(
 	_In_ const LPWSTR pszRemoteName,
 	_Out_ PSOCKADDR_BTH pRemoteBtAddr)
 {
-	INT             iResult = CXN_SUCCESS;
-	BOOL            bContinueLookup = FALSE, bRemoteDeviceFound = FALSE;
-	ULONG           ulFlags = 0, ulPQSSize = sizeof(WSAQUERYSET);
-	HANDLE          hLookup = NULL;
-	PWSAQUERYSET    pWSAQuerySet = NULL;
+	HRESULT hrResult = NOERROR;
+	BOOL    bContinueLookup = FALSE, bRemoteDeviceFound = FALSE;
+	ULONG   ulFlags = 0, ulPQSSize = sizeof(WSAQUERYSET);
+	HANDLE  hLookup = NULL;
 
-	ZeroMemory(pRemoteBtAddr, sizeof(*pRemoteBtAddr));
+	::ZeroMemory(pRemoteBtAddr, sizeof(*pRemoteBtAddr));
 
-	pWSAQuerySet = (PWSAQUERYSET)HeapAlloc(GetProcessHeap(),
+	// HeapAlloc function, https://msdn.microsoft.com/de-de/library/windows/desktop/aa366597(v=vs.85).aspx
+	// If the function fails, it does not call SetLastError. An application cannot call GetLastError for extended error information.
+	PWSAQUERYSET pWSAQuerySet = (PWSAQUERYSET)::HeapAlloc(GetProcessHeap(),
 		HEAP_ZERO_MEMORY,
 		ulPQSSize);
-	if (NULL == pWSAQuerySet) {
-		iResult = STATUS_NO_MEMORY;
-		wprintf(L"!ERROR! | Unable to allocate memory for WSAQUERYSET\n");
-	}
+	if (NULL == pWSAQuerySet)
+		return E_OUTOFMEMORY;
 
-	// 
-	// Search for the device with the correct name 
-	// 
-	if (CXN_SUCCESS == iResult) {
-
+	//
+	// Search for the device with the correct name
+	//
+	if (NOERROR == hrResult)
+	{
 		for (INT iRetryCount = 0;
 			!bRemoteDeviceFound && (iRetryCount < CXN_MAX_INQUIRY_RETRY);
 			iRetryCount++) {
-			// 
-			// WSALookupService is used for both service search and device inquiry 
-			// LUP_CONTAINERS is the flag which signals that we're doing a device inquiry. 
-			// 
+			//
+			// WSALookupService is used for both service search and device inquiry
+			// LUP_CONTAINERS is the flag which signals that we're doing a device inquiry.
+			//
 			ulFlags = LUP_CONTAINERS;
 
-			// 
-			// Friendly device name (if available) will be returned in lpszServiceInstanceName 
-			// 
+			//
+			// Friendly device name (if available) will be returned in lpszServiceInstanceName
+			//
 			ulFlags |= LUP_RETURN_NAME;
 
-			// 
-			// BTH_ADDR will be returned in lpcsaBuffer member of WSAQUERYSET 
-			// 
+			//
+			// BTH_ADDR will be returned in lpcsaBuffer member of WSAQUERYSET
+			//
 			ulFlags |= LUP_RETURN_ADDR;
 
-			if (0 == iRetryCount) {
-				wprintf(L"*INFO* | Inquiring device from cache...\n");
+			if (0 == iRetryCount)
+			{
+				ATLTRACE2(atlTraceGeneral, 0, _T("*INFO* | Inquiring device from cache...\n"));
 			}
 			else {
-				// 
-				// Flush the device cache for all inquiries, except for the first inquiry 
-				// 
-				// By setting LUP_FLUSHCACHE flag, we're asking the lookup service to do 
-				// a fresh lookup instead of pulling the information from device cache. 
-				// 
+				//
+				// Flush the device cache for all inquiries, except for the first inquiry
+				//
+				// By setting LUP_FLUSHCACHE flag, we're asking the lookup service to do
+				// a fresh lookup instead of pulling the information from device cache.
+				//
 				ulFlags |= LUP_FLUSHCACHE;
 
-				// 
-				// Pause for some time before all the inquiries after the first inquiry 
-				// 
-				// Remote Name requests will arrive after device inquiry has 
-				// completed.  Without a window to receive IN_RANGE notifications, 
-				// we don't have a direct mechanism to determine when remote 
-				// name requests have completed. 
-				// 
-				wprintf(L"*INFO* | Unable to find device.  Waiting for %d seconds before re-inquiry...\n", CXN_DELAY_NEXT_INQUIRY);
+				//
+				// Pause for some time before all the inquiries after the first inquiry
+				//
+				// Remote Name requests will arrive after device inquiry has
+				// completed.  Without a window to receive IN_RANGE notifications,
+				// we don't have a direct mechanism to determine when remote
+				// name requests have completed.
+				//
+				ATLTRACE2(atlTraceGeneral, 0, _T("*INFO* | Unable to find device.  Waiting for %d seconds before re-inquiry...\n"), CXN_DELAY_NEXT_INQUIRY);
 				Sleep(CXN_DELAY_NEXT_INQUIRY * 1000);
 
-				wprintf(L"*INFO* | Inquiring device ...\n");
+				ATLTRACE2(atlTraceGeneral, 0, _T("*INFO* | Inquiring device ...\n"));
 			}
 
-			// 
-			// Start the lookup service 
-			// 
-			iResult = CXN_SUCCESS;
+			//
+			// Start the lookup service
+			//
+			hrResult = NOERROR;
 			hLookup = 0;
 			bContinueLookup = FALSE;
-			ZeroMemory(pWSAQuerySet, ulPQSSize);
+			::ZeroMemory(pWSAQuerySet, ulPQSSize);
 			pWSAQuerySet->dwNameSpace = NS_BTH;
 			pWSAQuerySet->dwSize = sizeof(WSAQUERYSET);
-			iResult = WSALookupServiceBegin(pWSAQuerySet, ulFlags, &hLookup);
+			hrResult = ::WSALookupServiceBegin(pWSAQuerySet, ulFlags, &hLookup);
 
-			// 
-			// Even if we have an error, we want to continue until we 
-			// reach the CXN_MAX_INQUIRY_RETRY 
-			// 
-			if ((NO_ERROR == iResult) && (NULL != hLookup)) {
+			//
+			// Even if we have an error, we want to continue until we
+			// reach the CXN_MAX_INQUIRY_RETRY
+			//
+			if ((NOERROR == hrResult) && (NULL != hLookup)) {
 				bContinueLookup = TRUE;
 			}
 			else if (0 < iRetryCount) {
-				wprintf(L"=CRITICAL= | WSALookupServiceBegin() failed with error code %d, WSAGetLastError = %d\n", iResult, WSAGetLastError());
+				ATLTRACE2(atlTraceGeneral, 0, _T("=CRITICAL= | WSALookupServiceBegin() failed with error code %d, WSAGetLastError = %d\n"), hrResult, ::WSAGetLastError());
 				break;
 			}
 
 			while (bContinueLookup) {
-				// 
-				// Get information about next bluetooth device 
-				// 
-				// Note you may pass the same WSAQUERYSET from LookupBegin 
-				// as long as you don't need to modify any of the pointer 
-				// members of the structure, etc. 
-				// 
-				// ZeroMemory(pWSAQuerySet, ulPQSSize); 
-				// pWSAQuerySet->dwNameSpace = NS_BTH; 
-				// pWSAQuerySet->dwSize = sizeof(WSAQUERYSET); 
-				if (NO_ERROR == WSALookupServiceNext(hLookup,
+				//
+				// Get information about next bluetooth device
+				//
+				// Note you may pass the same WSAQUERYSET from LookupBegin
+				// as long as you don't need to modify any of the pointer
+				// members of the structure, etc.
+				//
+				// ZeroMemory(pWSAQuerySet, ulPQSSize);
+				// pWSAQuerySet->dwNameSpace = NS_BTH;
+				// pWSAQuerySet->dwSize = sizeof(WSAQUERYSET);
+				if (NO_ERROR == ::WSALookupServiceNext(hLookup,
 					ulFlags,
 					&ulPQSSize,
 					pWSAQuerySet)) {
@@ -554,12 +558,12 @@ HRESULT CBTHostDlg::enumBTServices(
 					// Compare the name to see if this is the device we are looking for. 
 					// 
 					if ((pWSAQuerySet->lpszServiceInstanceName != NULL) &&
-						(CXN_SUCCESS == _wcsicmp(pWSAQuerySet->lpszServiceInstanceName, pszRemoteName))) {
-						// 
+						(0 == _wcsicmp(pWSAQuerySet->lpszServiceInstanceName, pszRemoteName))) {
+						//
 						// Found a remote bluetooth device with matching name. 
 						// Get the address of the device and exit the lookup. 
-						// 
-						CopyMemory(pRemoteBtAddr,
+						//
+						::CopyMemory(pRemoteBtAddr,
 							(PSOCKADDR_BTH)pWSAQuerySet->lpcsaBuffer->RemoteAddr.lpSockaddr,
 							sizeof(*pRemoteBtAddr));
 						bRemoteDeviceFound = TRUE;
@@ -567,60 +571,60 @@ HRESULT CBTHostDlg::enumBTServices(
 					}
 				}
 				else {
-					iResult = WSAGetLastError();
-					if (WSA_E_NO_MORE == iResult) { //No more data 
+					hrResult = ::WSAGetLastError();
+					if (WSA_E_NO_MORE == hrResult) { //No more data 
 													// 
 													// No more devices found.  Exit the lookup. 
 													// 
 						bContinueLookup = FALSE;
 					}
-					else if (WSAEFAULT == iResult) {
-						// 
-						// The buffer for QUERYSET was insufficient. 
-						// In such case 3rd parameter "ulPQSSize" of function "WSALookupServiceNext()" receives 
-						// the required size.  So we can use this parameter to reallocate memory for QUERYSET. 
-						// 
-						HeapFree(GetProcessHeap(), 0, pWSAQuerySet);
-						pWSAQuerySet = (PWSAQUERYSET)HeapAlloc(GetProcessHeap(),
+					else if (WSAEFAULT == hrResult) {
+						//
+						// The buffer for QUERYSET was insufficient.
+						// In such case 3rd parameter "ulPQSSize" of function "WSALookupServiceNext()" receives
+						// the required size.  So we can use this parameter to reallocate memory for QUERYSET.
+						//
+						::HeapFree(::GetProcessHeap(), 0, pWSAQuerySet);
+						pWSAQuerySet = (PWSAQUERYSET)::HeapAlloc(::GetProcessHeap(),
 							HEAP_ZERO_MEMORY,
 							ulPQSSize);
 						if (NULL == pWSAQuerySet) {
 							wprintf(L"!ERROR! | Unable to allocate memory for WSAQERYSET\n");
-							iResult = STATUS_NO_MEMORY;
+							hrResult = STATUS_NO_MEMORY;
 							bContinueLookup = FALSE;
 						}
 					}
 					else {
-						wprintf(L"=CRITICAL= | WSALookupServiceNext() failed with error code %d\n", iResult);
+						wprintf(L"=CRITICAL= | WSALookupServiceNext() failed with error code %d\n", hrResult);
 						bContinueLookup = FALSE;
 					}
 				}
 			}
 
-			// 
-			// End the lookup service 
-			// 
-			WSALookupServiceEnd(hLookup);
+			//
+			// End the lookup service
+			//
+			::WSALookupServiceEnd(hLookup);
 
-			if (STATUS_NO_MEMORY == iResult) {
+			if (STATUS_NO_MEMORY == hrResult) {
 				break;
 			}
 		}
 	}
 
 	if (NULL != pWSAQuerySet) {
-		HeapFree(GetProcessHeap(), 0, pWSAQuerySet);
+		::HeapFree(::GetProcessHeap(), 0, pWSAQuerySet);
 		pWSAQuerySet = NULL;
 	}
 
 	if (bRemoteDeviceFound) {
-		iResult = CXN_SUCCESS;
+		hrResult = NOERROR;
 	}
 	else {
-		iResult = CXN_ERROR;
+		hrResult = E_INVALIDARG;
 	}
 
-	return iResult;
+	return hrResult;
 }
 
 /*static*/ HRESULT CBTHostDlg::BTAddressToString(

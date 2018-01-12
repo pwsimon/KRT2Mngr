@@ -6,6 +6,7 @@ variante 1: (COMHost.exe) via COM Port,
 variante 2: (BTHost.exe) echter zugriff ueber die BT API
 
 History: (der letzte/neueste eintrag steht oben)
+- device inquiry for "KRT21885" to get BT Address probably (98:D3:31:FD:5A:F2)
 - open socket and write data to HardCoded BT Address: 98:D3:31:FD:5A:F2
 - SoftButtons im OnDocumentComplete() beschriften
 - ::WSAStartup/WSACleanup eingefuehrt, enumDevice (using bluetoothapis.h)

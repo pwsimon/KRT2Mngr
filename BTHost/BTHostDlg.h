@@ -44,7 +44,7 @@ private:
 	HRESULT enumBTDevices(GUID serviceClass);
 	HRESULT enumBTServices(LPCWSTR szDeviceAddress, GUID serviceClass);
 	HRESULT Connect(PSOCKADDR_BTH RemoteAddr);
-	static ULONG NameToBthAddr(const LPWSTR pszRemoteName, PSOCKADDR_BTH pRemoteBtAddr);
+	static HRESULT NameToBthAddr(const LPWSTR pszRemoteName, PSOCKADDR_BTH pRemoteBtAddr);
 	static HRESULT BTAddressToString(BLUETOOTH_ADDRESS* pBTAddr, BSTR* pbstrAddress);
 	static HRESULT BTAddressToString(PSOCKADDR_BTH lpAddress, BSTR* pbstrAddress);
 	static HRESULT ShowWSALastError(LPCTSTR szCaption);
