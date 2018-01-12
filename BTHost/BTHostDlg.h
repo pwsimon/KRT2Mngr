@@ -16,10 +16,7 @@ public:
 #endif
 
 	protected:
-	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV support
-
-	HRESULT OnCheck(IHTMLElement *pElement);
-	HRESULT OnButtonCancel(IHTMLElement *pElement);
+	virtual void DoDataExchange(CDataExchange* pDX); // DDX/DDV support
 
 // Implementation
 protected:
@@ -35,6 +32,8 @@ protected:
 
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
+	HRESULT OnCheck(IHTMLElement *pElement);
+	HRESULT OnButtonCancel(IHTMLElement *pElement);
 
 private:
 	HRESULT enumBTRadio(HANDLE& hRadio);

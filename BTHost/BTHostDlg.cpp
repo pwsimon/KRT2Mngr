@@ -41,11 +41,10 @@ void CAboutDlg::DoDataExchange(CDataExchange* pDX)
 BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
 END_MESSAGE_MAP()
 
-
 // CBTHostDlg dialog
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
-	DHTML_EVENT_ONCLICK(_T("btnCheck"), OnCheck)
-	DHTML_EVENT_ONCLICK(_T("ButtonCancel"), OnButtonCancel)
+	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnCheck) // soft buttons
+	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnButtonCancel)
 END_DHTML_EVENT_MAP()
 
 CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
@@ -68,6 +67,16 @@ END_MESSAGE_MAP()
 // CBTHostDlg message handlers
 BOOL CBTHostDlg::OnInitDialog()
 {
+	/*
+	* wir navigieren zu einer externen resource
+	* script fehler? welche zone? welche rechte?
+	*   siehe auch:
+	*     COMHost.cpp(44): CCOMHostApp::InitInstance()
+	*     HKEY_CURRENT_USER\SOFTWARE\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\COMHost.exe (REG_DWORD) 11000
+	*/
+	// m_nHtmlResID = 0;
+	// m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
+	m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
 	CDHtmlDialog::OnInitDialog();
 
 	// Add "About..." menu item to system menu.
