@@ -65,7 +65,7 @@ BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
 END_MESSAGE_MAP()
 
 // CBTHostDlg message handlers
-BOOL CBTHostDlg::OnInitDialog()
+/*virtual*/ BOOL CBTHostDlg::OnInitDialog()
 {
 	/*
 	* wir navigieren zu einer externen resource
@@ -111,6 +111,13 @@ BOOL CBTHostDlg::OnInitDialog()
 		CBTHostDlg::ShowWSALastError(_T("WSAStartup"));
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
+}
+
+/*virtual*/ void CBTHostDlg::OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl)
+{
+	// SetElementProperty(_T("btnSoft1"), DISPID_VALUE, &CComVariant(L"Check hurtz")); // for <input> elements
+	SetElementText(_T("btnSoft1"), _T("Check SPP"));
+	SetElementText(_T("btnSoft2"), _T("Cancel"));
 }
 
 void CBTHostDlg::OnClose()
