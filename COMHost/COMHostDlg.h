@@ -45,6 +45,7 @@ protected:
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
 	afx_msg void OnClose();
+	afx_msg LRESULT OnAck(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnRXSingleByte(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnRXDecodedCmd(WPARAM wParam, LPARAM lParam);
 

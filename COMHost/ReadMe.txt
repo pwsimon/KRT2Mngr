@@ -6,6 +6,7 @@ variante 1: (COMHost.exe) via COM Port,
 variante 2: (BTHost.exe) echter zugriff ueber die BT API
 
 History: (der letzte/neueste eintrag steht oben)
+- SingleByte (Outgoing) Command 'C', C_CMD_FORMAT_JSON, Exchange of Frequencies (active against passive) implementiert
 - some sample Commands to transmit/send form builtin DebugGUI DualMode-On/Off
 - die API des COMHost ist jetzt ueber window.external erreichbar
 - COMPorts koennen im gegensatz zu Files NICHT MEHRFACH eroeffnet werden

@@ -42,8 +42,9 @@ BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
 END_MESSAGE_MAP()
 
 // CCOMHostDlg dialog
-#define WM_USER_RXSINGLEBYTE    (WM_USER + 1) // posted from COMReadThread
-#define WM_USER_RXDECODEDCMD    (WM_USER + 2)
+#define WM_USER_ACK             (WM_USER + 1) // posted from COMReadThread
+#define WM_USER_RXSINGLEBYTE    (WM_USER + 2)
+#define WM_USER_RXDECODEDCMD    (WM_USER + 3)
 
 OVERLAPPED s_OverlappedRead;
 
@@ -54,6 +55,7 @@ END_DHTML_EVENT_MAP()
 BEGIN_MESSAGE_MAP(CCOMHostDlg, CDHtmlDialog)
 	ON_WM_SYSCOMMAND()
 	ON_WM_CLOSE()
+	ON_MESSAGE(WM_USER_ACK, OnAck)
 	ON_MESSAGE(WM_USER_RXSINGLEBYTE, OnRXSingleByte)
 	ON_MESSAGE(WM_USER_RXDECODEDCMD, OnRXDecodedCmd)
 END_MESSAGE_MAP()
@@ -99,7 +101,7 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 	*     COMHost.cpp(44): CCOMHostApp::InitInstance()
 	*     HKEY_CURRENT_USER\SOFTWARE\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\COMHost.exe (REG_DWORD) 11000
 	*/
-	m_nHtmlResID = 0;
+	// m_nHtmlResID = 0;
 	// m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
 	m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
 	CCommandLineInfo cmdLI;
@@ -196,6 +198,12 @@ void CCOMHostDlg::OnPaint()
 HCURSOR CCOMHostDlg::OnQueryDragIcon()
 {
 	return static_cast<HCURSOR>(m_hIcon);
+}
+
+LRESULT CCOMHostDlg::OnAck(WPARAM wParam, LPARAM lParam)
+{
+	sendCommand(CComBSTR(L"0x06"), NULL);
+	return 0;
 }
 
 LRESULT CCOMHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
@@ -532,6 +540,24 @@ void CCOMHostDlg::OnClose()
 	return HRESULT_FROM_WIN32(dwMessageId);
 }
 
+enum _KRT2StateMachine
+{
+	END,
+	IDLE,
+	WAIT_FOR_CMD,
+	WAIT_FOR_MHZ,
+	WAIT_FOR_kHZ,
+	WAIT_FOR_N0,
+	WAIT_FOR_N1,
+	WAIT_FOR_N2,
+	WAIT_FOR_N3,
+	WAIT_FOR_N4,
+	WAIT_FOR_N5,
+	WAIT_FOR_N6,
+	WAIT_FOR_N7,
+	WAIT_FOR_MNR,
+	WAIT_FOR_CHK
+} s_state = IDLE;
 /*static*/ unsigned int CCOMHostDlg::COMReadThread(void* arguments)
 {
 	struct _ReadThreadArg* pArgs = (struct _ReadThreadArg*) arguments;
@@ -557,7 +583,16 @@ void CCOMHostDlg::OnClose()
 			const DWORD dwEvent = ::WaitForMultipleObjects(_countof(rgHandles), rgHandles, FALSE, 10000);
 			if (WAIT_TIMEOUT == dwEvent)
 			{
-				ATLTRACE2(atlTraceGeneral, 0, _T("run idle and continue loop\n"));
+				/*
+				* wenn sich nichts auf der leitung tut fuehren wir einen RESET auf unseren CommandParser aus
+				* wenn z.B. irgendwas auf der leitung verloren geht wuerde der parser UNENDLICH auf das naechste byte warten.
+				* in der Praxis ist es aber so dass, das KRT2 ein commando "zusammenhaengend" abschickt
+				* da die BaudRate fixed 9600bps ist und auch die maximale Command lenght bekannt ist
+				* kann ich hier den parser problemlos zuruecksetzen.
+				* Hinweis(s)
+				* wir beruecksichtigen auch das reservierte zeichen 0x02 (stx) waehrend der CommandParser auf vervollstaendigung wartet.
+				*/
+				ATLTRACE2(atlTraceGeneral, 0, _T("run idle and continue loop. Parser.State: 0x%.2x\n"), s_state);
 				continue;
 			}
 
@@ -604,12 +639,14 @@ void CCOMHostDlg::OnClose()
 				*/
 				s_OverlappedRead.Offset += dwNumberOfBytesRead;
 
-				ATLTRACE2(atlTraceGeneral, 1, _T("  process 0x%.8x\n"), rgCommand[0]);
+				ATLTRACE2(atlTraceGeneral, 1, _T("  process %hc\n"), rgCommand[0]);
 #ifdef DISPATCH_LOWLEVEL_BYTERECEIVE
 				::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
 #endif
 #ifdef DRIVE_COMMANDPARSER
 				CCOMHostDlg::DriveStateMachine(pArgs->hwndMainDlg, rgCommand[0], TRUE);
+#else
+				ATLTRACE2(atlTraceGeneral, 0, _T("dwNumberOfBytesRead: 0x%.8x, rgCommand[0]: %hc (Async)\n"), dwNumberOfBytesRead, rgCommand[0]);
 #endif
 
 				ATLTRACE2(atlTraceGeneral, 1, _T("  continue\n"));
@@ -634,6 +671,8 @@ void CCOMHostDlg::OnClose()
 #endif
 #ifdef DRIVE_COMMANDPARSER
 			CCOMHostDlg::DriveStateMachine(pArgs->hwndMainDlg, rgCommand[0], FALSE);
+#else
+			ATLTRACE2(atlTraceGeneral, 0, _T("dwNumberOfBytesRead: 0x00000001, rgCommand[0]: %hc (Sync)\n"), rgCommand[0]);
 #endif
 		}
 	}
@@ -645,6 +684,7 @@ void CCOMHostDlg::OnClose()
 }
 
 #define B_CMD_FORMAT_JSON _T("{ \"nCommand\": \"B\" }")
+#define C_CMD_FORMAT_JSON _T("{ \"nCommand\": \"C\" }")
 #define D_CMD_FORMAT_JSON _T("{ \"nCommand\": \"D\" }")
 #define J_CMD_FORMAT_JSON _T("{ \"nCommand\": \"J\" }")
 #define V_CMD_FORMAT_JSON _T("{ \"nCommand\": \"V\" }")
@@ -653,25 +693,6 @@ void CCOMHostDlg::OnClose()
 #define U_CMD_FORMAT_JSON _T("{ \"nCommand\": \"U\", \"nFrequence\": %d, \"sStation\": \"%hs\" }")
 #define R_CMD_FORMAT_JSON _T("{ \"nCommand\": \"R\", \"nFrequence\": %d, \"sStation\": \"%hs\", \"nIndex\", %d }")
 #define A_CMD_FORMAT_JSON _T("{ \"nCommand\": \"A\", \"nVolume\": %d, \"nSquelch\": %d, \"nVOX\": %d }")
-
-enum _KRT2StateMachine
-{
-	END,
-	IDLE,
-	WAIT_FOR_CMD,
-	WAIT_FOR_MHZ,
-	WAIT_FOR_kHZ,
-	WAIT_FOR_N0,
-	WAIT_FOR_N1,
-	WAIT_FOR_N2,
-	WAIT_FOR_N3,
-	WAIT_FOR_N4,
-	WAIT_FOR_N5,
-	WAIT_FOR_N6,
-	WAIT_FOR_N7,
-	WAIT_FOR_MNR,
-	WAIT_FOR_CHK
-} s_state = IDLE;
 enum _KRT2StateMachine const* s_pCurrentCmd = NULL;
 unsigned int s_iIndexCmd = 1;
 BYTE s_rgValuesCmd[0x10]; // hier stehen die werte der stellungsparameter fuer das s_pCurrentCmd
@@ -707,6 +728,7 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 		if ('S' == byte)
 		{
 			ATLTRACE2(atlTraceGeneral, 0, _T("keep alive / ping - received\n"));
+			::PostMessage(hwndMainDlg, WM_USER_ACK, MAKEWPARAM(byte, 0), (LPARAM)NULL);
 			break;
 		}
 
@@ -726,6 +748,23 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 			// ATLTRACE2(atlTraceGeneral, 0, _T("single byte command: low BATT\n"));
 			CString strCommand;
 			strCommand.Format(B_CMD_FORMAT_JSON);
+			const size_t _size = strCommand.GetLength() + 1;
+			PTCHAR lParam = new TCHAR[_size];
+			_tcscpy_s(lParam, _size, strCommand.GetBuffer());
+			::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM(byte, 0), (LPARAM)lParam);
+			hr = NOERROR;
+			_ASSERT(s_state != IDLE); // ensure transition
+			s_state = IDLE;
+		}
+
+		/*
+		* Exchange of Frequencies (active against passive)
+		* but NOT explicit documented as OUTGOING command
+		*/
+		else if ('C' == byte)
+		{
+			CString strCommand;
+			strCommand.Format(C_CMD_FORMAT_JSON);
 			const size_t _size = strCommand.GetLength() + 1;
 			PTCHAR lParam = new TCHAR[_size];
 			_tcscpy_s(lParam, _size, strCommand.GetBuffer());
@@ -819,10 +858,10 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 
 		else
 		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("unknown command, reset to IDLE / abort\n"));
 			hr = NOERROR;
 			s_state = IDLE; // unknown command, reset to IDLE / abort
 		}
-
 		break;
 	case WAIT_FOR_MHZ:
 		s_state = CCOMHostDlg::DriveCommand(hwndMainDlg, byte);
@@ -868,6 +907,19 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 	HWND hwndMainDlg,
 	BYTE byte)
 {
+	if (0x02 == byte)
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("ERROR: unexpected byte received (reserved code 0x02/stx) reset command parser\n"));
+
+		/*
+		* und wir sind wieder bei dem TYPISCHEN parser problem
+		* wir haben ein empfangenes byte konsumiert, eigentlich muessen wir es in den empfangsbuffer zurueckstellen
+		*/
+		s_pCurrentCmd = NULL; // wait for / reset to - next command
+		s_iIndexCmd = 1;
+		return IDLE;
+	}
+
 	s_rgValuesCmd[s_iIndexCmd] = byte;
 	s_iIndexCmd += 1; // read next
 	if (END == s_pCurrentCmd[s_iIndexCmd])
