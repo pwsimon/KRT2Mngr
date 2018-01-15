@@ -27,8 +27,13 @@ function receiveCommand() {
 	});
 }
 function sendCommand() {
-	window.external.sendCommand('S', function () {
-		document.getElementById('command').innerText = 'here we go';
+	var sPing         = "S",         // Interface_Ext_V18.pdf(2), 1.1 Activate the Remote connection
+		sToggleActPas = "0x02 0x43", // Interface_Ext_V18.pdf(5), 1.3.2 Exchange of Frequencies (active against passive)
+		sDualModeOn   = "0x02 0x4f", // Interface_Ext_V18.pdf(5), 1.3.7 DUAL-mode on
+		sDualModeOff  = "0x02 0x6f"; // Interface_Ext_V18.pdf(5), 1.3.8 DUAL-mode off
+
+	window.external.sendCommand(sToggleActPas, function () {
+		document.getElementById('command').innerText = 'transmit completed';
 	});
 }
 	</script>
