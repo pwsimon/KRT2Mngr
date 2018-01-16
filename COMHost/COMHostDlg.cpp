@@ -630,14 +630,19 @@ enum _KRT2StateMachine
 				}
 
 				ATLTRACE2(atlTraceGeneral, 1, _T("  0x%.8x bytes received\n"), dwNumberOfBytesRead);
+#ifdef KRT2INPUT
 				/*
 				* A common mistake in overlapped I/O is to reuse an OVERLAPPED structure before the previous overlapped operation is completed.
 				* If a new overlapped operation is issued before a previous operation is completed, a new OVERLAPPED structure must be allocated for it.
 				* A new manual-reset event for the hEvent member of the OVERLAPPED structure must also be created.
 				* Once an overlapped operation is complete, the OVERLAPPED structure and its event are free for reuse.
 				*   Serial Communications, https://msdn.microsoft.com/en-us/library/ff802693.aspx
+				*
+				* OVERLAPPED structure, https://msdn.microsoft.com/de-de/library/windows/desktop/ms684342(v=vs.85).aspx
+				* This member is nonzero only when performing I/O requests on a seeking device that supports the concept of an offset (also referred to as a file pointer mechanism), such as a file. Otherwise, this member must be zero.
 				*/
 				s_OverlappedRead.Offset += dwNumberOfBytesRead;
+#endif
 
 				ATLTRACE2(atlTraceGeneral, 1, _T("  process %hc\n"), rgCommand[0]);
 #ifdef DISPATCH_LOWLEVEL_BYTERECEIVE
