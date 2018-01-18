@@ -937,15 +937,19 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 {
 	if (0x02 == byte)
 	{
-		ATLTRACE2(atlTraceGeneral, 0, _T("ERROR: unexpected byte received (reserved code 0x02/stx) reset command parser\n"));
+		ATLTRACE2(atlTraceGeneral, 0, _T("ERROR: unexpected byte received (reserved code 0x02/stx) reset command parser to: WAIT_FOR_CMD\n"));
 
 		/*
 		* und wir sind wieder bei dem TYPISCHEN parser problem
 		* wir haben ein empfangenes byte konsumiert, eigentlich muessen wir es in den empfangsbuffer zurueckstellen
+		*
+		* - wir canceln das AKTUELLE command
+		* - ueberspringen den IDLE und setzen direkt mit WAIT_FOR_CMD fort
+		* - Fazit: mit dem empfang von 0x02 (stx) restarten wir unmittelbar
 		*/
 		s_pCurrentCmd = NULL; // wait for / reset to - next command
 		s_iIndexCmd = 1;
-		return IDLE;
+		return WAIT_FOR_CMD;
 	}
 
 	s_rgValuesCmd[s_iIndexCmd] = byte;
