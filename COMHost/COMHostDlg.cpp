@@ -310,7 +310,7 @@ HRESULT CCOMHostDlg::InitInputOutput(IHTMLElement*)
 }
 
 /*
-* dieses testfile enthaelt die folgenden UseCases:
+* das testfile ("krt2input.bin") enthaelt die folgenden UseCases:
 * 1.) 'R', 1.2.2 Set frequency & name on passive side, 126.900, PETER
 * 2.) 'O', 1.2.6 DUAL-mode on
 * 3.) 'o', 1.2.7 DUAL-mode off
@@ -318,6 +318,7 @@ HRESULT CCOMHostDlg::InitInputOutput(IHTMLElement*)
 * 5.) 'D', release low BATT
 * 6.) 'J', RX
 * 7.) 'V', release RX
+* 8.) 'A', 0x0a, 0x03, 0x05, 1.2.3 set volume, squelch, intercom-VOX
 */
 void CCOMHostDlg::sendCommand(
 	BSTR bstrCommand,
@@ -862,6 +863,13 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 		}
 
 		// begin parsing of MultiByte commands
+		else if ('A' == byte)
+		{
+			s_pCurrentCmd = s_A123;
+			s_iIndexCmd = 1; // skip command id
+			s_state = s_pCurrentCmd[s_iIndexCmd];
+		}
+
 		else if ('U' == byte)
 		{
 			s_pCurrentCmd = s_U121;
@@ -946,6 +954,18 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 	{
 		switch (s_pCurrentCmd[0])
 		{
+			case 'A':
+			{
+				const int iCheckSum = s_rgValuesCmd[2 /* squelch */] ^ s_rgValuesCmd[3 /* VOX */]; // these indexes are command specific
+				_ASSERT(iCheckSum == s_rgValuesCmd[4 /* WAIT_FOR_CHK */]);
+				CString strCommand;
+				strCommand.Format(A_CMD_FORMAT_JSON, s_rgValuesCmd[1 /* Volume */], s_rgValuesCmd[2 /* squelch */], s_rgValuesCmd[3 /* VOX */]);
+				const size_t _size = strCommand.GetLength() + 1;
+				PTCHAR lParam = new TCHAR[_size];
+				_tcscpy_s(lParam, _size, strCommand.GetBuffer());
+				::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM('A', 0), (LPARAM)lParam);
+			}
+			break;
 			case 'R':
 			{
 #ifdef R_CMD_WITHOUT_MEM
