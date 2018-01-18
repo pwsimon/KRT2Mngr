@@ -311,14 +311,16 @@ HRESULT CCOMHostDlg::InitInputOutput(IHTMLElement*)
 
 /*
 * das testfile ("krt2input.bin") enthaelt die folgenden UseCases:
-* 1.) 'R', 1.2.2 Set frequency & name on passive side, 126.900, PETER
-* 2.) 'O', 1.2.6 DUAL-mode on
-* 3.) 'o', 1.2.7 DUAL-mode off
-* 4.) 'B', low BATT
-* 5.) 'D', release low BATT
-* 6.) 'J', RX
-* 7.) 'V', release RX
-* 8.) 'A', 0x0a, 0x03, 0x05, 1.2.3 set volume, squelch, intercom-VOX
+*  1.) 'R', 1.2.2 Set frequency & name on passive side, 126.900, PETER
+*  2.) 'O', 1.2.6 DUAL-mode on
+*  3.) 'o', 1.2.7 DUAL-mode off
+*  4.) 'B', low BATT
+*  5.) 'D', release low BATT
+*  6.) 'J', RX
+*  7.) 'V', release RX
+*  8.) 'A', 0x0a, 0x03, 0x05, 1.2.3 set volume, squelch, intercom-VOX
+*  9.) 'A', command sequence failure by 0x02 (stx)
+* 10.) 'O', 1.2.6 DUAL-mode on
 */
 void CCOMHostDlg::sendCommand(
 	BSTR bstrCommand,
@@ -559,6 +561,8 @@ enum _KRT2StateMachine
 	WAIT_FOR_MNR,
 	WAIT_FOR_CHK
 } s_state = IDLE;
+enum _KRT2StateMachine const* s_pCurrentCmd = NULL;
+unsigned int s_iIndexCmd = 1;
 /*static*/ unsigned int CCOMHostDlg::COMReadThread(void* arguments)
 {
 	struct _ReadThreadArg* pArgs = (struct _ReadThreadArg*) arguments;
@@ -707,8 +711,6 @@ enum _KRT2StateMachine
 	#define R_CMD_FORMAT_JSON _T("{ \"nCommand\": \"R\", \"nFrequence\": %d, \"sStation\": \"%hs\", \"nIndex\", %02x }")
 #endif
 #define A_CMD_FORMAT_JSON _T("{ \"nCommand\": \"A\", \"nVolume\": %d, \"nSquelch\": %d, \"nVOX\": %d }")
-enum _KRT2StateMachine const* s_pCurrentCmd = NULL;
-unsigned int s_iIndexCmd = 1;
 /*
 * hier stehen die werte der stellungsparameter fuer das s_pCurrentCmd
 *
