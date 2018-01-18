@@ -594,8 +594,6 @@ unsigned int s_iIndexCmd = 1;
 				* in der Praxis ist es aber so dass, das KRT2 ein commando "zusammenhaengend" abschickt
 				* da die BaudRate fixed 9600bps ist und auch die maximale Command lenght bekannt ist
 				* kann ich hier den parser problemlos zuruecksetzen.
-				* Hinweis(s)
-				* wir beruecksichtigen auch das reservierte zeichen 0x02 (stx) waehrend der CommandParser auf vervollstaendigung wartet.
 				*/
 				ATLTRACE2(atlTraceGeneral, 0, _T("run idle and continue loop. Parser.State: 0x%.2x\n"), s_state);
 				s_pCurrentCmd = NULL; // wait for / reset to - IDLE
@@ -940,23 +938,6 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 	HWND hwndMainDlg,
 	BYTE byte)
 {
-	if (0x02 == byte)
-	{
-		ATLTRACE2(atlTraceGeneral, 0, _T("ERROR: unexpected byte received (reserved code 0x02/stx) reset command parser to: WAIT_FOR_CMD\n"));
-
-		/*
-		* und wir sind wieder bei dem TYPISCHEN parser problem
-		* wir haben ein empfangenes byte konsumiert, eigentlich muessen wir es in den empfangsbuffer zurueckstellen
-		*
-		* - wir canceln das AKTUELLE command
-		* - ueberspringen den IDLE und setzen direkt mit WAIT_FOR_CMD fort
-		* - Fazit: mit dem empfang von 0x02 (stx) restarten wir unmittelbar
-		*/
-		s_pCurrentCmd = NULL; // wait for / reset to - WAIT_FOR_CMD
-		s_iIndexCmd = 1;
-		return WAIT_FOR_CMD;
-	}
-
 	s_rgValuesCmd[s_iIndexCmd] = byte;
 	s_iIndexCmd += 1; // read next
 	if (END == s_pCurrentCmd[s_iIndexCmd])
