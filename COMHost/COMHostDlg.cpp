@@ -46,8 +46,6 @@ END_MESSAGE_MAP()
 #define WM_USER_RXSINGLEBYTE    (WM_USER + 2)
 #define WM_USER_RXDECODEDCMD    (WM_USER + 3)
 
-OVERLAPPED s_OverlappedRead;
-
 BEGIN_DHTML_EVENT_MAP(CCOMHostDlg)
 	DHTML_EVENT_ONCLICK(_T("btnSoft1"), InitInputOutput) // soft buttons
 END_DHTML_EVENT_MAP()
@@ -543,6 +541,11 @@ void CCOMHostDlg::OnClose()
 	return HRESULT_FROM_WIN32(dwMessageId);
 }
 
+/*
+* hier liegen die funktionen, variable die AUSSCHLIESSLICH vom COMReadThread genutzt werden
+* daher ist hier KEINE synchronisation noetig
+*/
+OVERLAPPED s_OverlappedRead;
 enum _KRT2StateMachine
 {
 	END,
@@ -623,6 +626,7 @@ unsigned int s_iIndexCmd = 1;
 			else if (WAIT_OBJECT_0 + 2 == dwEvent)
 			{
 				ATLTRACE2(atlTraceGeneral, 1, _T("s_OverlappedRead.hEvent signaled\n"));
+				::ResetEvent(s_OverlappedRead.hEvent);
 
 				// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
 				DWORD dwNumberOfBytesRead = -1;
@@ -635,7 +639,6 @@ unsigned int s_iIndexCmd = 1;
 					break;
 				}
 
-				ATLTRACE2(atlTraceGeneral, 1, _T("  0x%.8x bytes received\n"), dwNumberOfBytesRead);
 #ifdef KRT2INPUT
 				/*
 				* A common mistake in overlapped I/O is to reuse an OVERLAPPED structure before the previous overlapped operation is completed.
@@ -650,13 +653,16 @@ unsigned int s_iIndexCmd = 1;
 				s_OverlappedRead.Offset += dwNumberOfBytesRead;
 #endif
 
-				ATLTRACE2(atlTraceGeneral, 1, _T("  process %hc\n"), rgCommand[0]);
 #ifdef DISPATCH_LOWLEVEL_BYTERECEIVE
 				::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
 #endif
 #ifdef DRIVE_COMMANDPARSER
 				CCOMHostDlg::DriveStateMachine(pArgs->hwndMainDlg, rgCommand[0], TRUE);
 #else
+				/*
+				* JEDES, einzelne, BYTE MUSS hier vorbei
+				* dennoch sehe ich beim pArgs->hCOMPort == COM (Type) offensichtlich nur einzelne BYTES???
+				*/
 				ATLTRACE2(atlTraceGeneral, 0, _T("dwNumberOfBytesRead: 0x%.8x, rgCommand[0]: %hc (Async)\n"), dwNumberOfBytesRead, rgCommand[0]);
 #endif
 

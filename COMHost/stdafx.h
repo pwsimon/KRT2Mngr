@@ -42,7 +42,7 @@
 #endif
 
 // #define DISPATCH_LOWLEVEL_BYTERECEIVE
-#define DRIVE_COMMANDPARSER
+// #define DRIVE_COMMANDPARSER
 
 /*
 * zwei varianten:
