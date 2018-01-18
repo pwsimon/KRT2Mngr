@@ -594,6 +594,9 @@ enum _KRT2StateMachine
 				* wir beruecksichtigen auch das reservierte zeichen 0x02 (stx) waehrend der CommandParser auf vervollstaendigung wartet.
 				*/
 				ATLTRACE2(atlTraceGeneral, 0, _T("run idle and continue loop. Parser.State: 0x%.2x\n"), s_state);
+				s_pCurrentCmd = NULL; // wait for / reset to - IDLE
+				s_iIndexCmd = 1;
+				s_state = IDLE;
 				continue;
 			}
 
@@ -947,7 +950,7 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 		* - ueberspringen den IDLE und setzen direkt mit WAIT_FOR_CMD fort
 		* - Fazit: mit dem empfang von 0x02 (stx) restarten wir unmittelbar
 		*/
-		s_pCurrentCmd = NULL; // wait for / reset to - next command
+		s_pCurrentCmd = NULL; // wait for / reset to - WAIT_FOR_CMD
 		s_iIndexCmd = 1;
 		return WAIT_FOR_CMD;
 	}
