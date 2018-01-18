@@ -696,11 +696,22 @@ enum _KRT2StateMachine
 #define O_CMD_FORMAT_JSON _T("{ \"nCommand\": \"O\" }")
 #define o_CMD_FORMAT_JSON _T("{ \"nCommand\": \"o\" }")
 #define U_CMD_FORMAT_JSON _T("{ \"nCommand\": \"U\", \"nFrequence\": %d, \"sStation\": \"%hs\" }")
-#define R_CMD_FORMAT_JSON _T("{ \"nCommand\": \"R\", \"nFrequence\": %d, \"sStation\": \"%hs\", \"nIndex\", %d }")
+#define R_CMD_WITHOUT_MEM
+#ifdef R_CMD_WITHOUT_MEM
+	#define R_CMD_FORMAT_JSON _T("{ \"nCommand\": \"R\", \"nFrequence\": %d, \"sStation\": \"%hs\" }")
+#else
+	#define R_CMD_FORMAT_JSON _T("{ \"nCommand\": \"R\", \"nFrequence\": %d, \"sStation\": \"%hs\", \"nIndex\", %02x }")
+#endif
 #define A_CMD_FORMAT_JSON _T("{ \"nCommand\": \"A\", \"nVolume\": %d, \"nSquelch\": %d, \"nVOX\": %d }")
 enum _KRT2StateMachine const* s_pCurrentCmd = NULL;
 unsigned int s_iIndexCmd = 1;
-BYTE s_rgValuesCmd[0x10]; // hier stehen die werte der stellungsparameter fuer das s_pCurrentCmd
+/*
+* hier stehen die werte der stellungsparameter fuer das s_pCurrentCmd
+*
+* ich verwende hier explizit KEINE BYTES, ich brauch zwar den vierfachen platz ABER:
+* dafuer ist der zugriff schneller (alignment) UND fuer printf (%x) einfacher
+*/
+unsigned int s_rgValuesCmd[16];
 /*
 * 1.2 Out-going strings (from Radio after changing on panel):
 * MultiByte Commands
@@ -709,7 +720,11 @@ BYTE s_rgValuesCmd[0x10]; // hier stehen die werte der stellungsparameter fuer d
 *   z.B. die 1.3.5 Set a single record & name to database with address hat exact das dasselbe format wie die s_R122 message
 */
 const enum _KRT2StateMachine s_U121[13] = { (enum _KRT2StateMachine)'U', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_N3, WAIT_FOR_N4, WAIT_FOR_N5, WAIT_FOR_N6, WAIT_FOR_N7, WAIT_FOR_CHK, END };
-const enum _KRT2StateMachine s_R122[14] = { (enum _KRT2StateMachine)'R', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_N3, WAIT_FOR_N4, WAIT_FOR_N5, WAIT_FOR_N6, WAIT_FOR_N7, WAIT_FOR_MNR, WAIT_FOR_CHK, END };
+#ifdef R_CMD_WITHOUT_MEM
+	const enum _KRT2StateMachine s_R122[13] = { (enum _KRT2StateMachine)'R', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_N3, WAIT_FOR_N4, WAIT_FOR_N5, WAIT_FOR_N6, WAIT_FOR_N7, WAIT_FOR_CHK, END };
+#else
+	const enum _KRT2StateMachine s_R122[14] = { (enum _KRT2StateMachine)'R', WAIT_FOR_MHZ, WAIT_FOR_kHZ, WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_N3, WAIT_FOR_N4, WAIT_FOR_N5, WAIT_FOR_N6, WAIT_FOR_N7, WAIT_FOR_MNR, WAIT_FOR_CHK, END };
+#endif
 const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FOR_N0, WAIT_FOR_N1, WAIT_FOR_N2, WAIT_FOR_CHK, END };
 /*
 * return value:
@@ -931,24 +946,39 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 	{
 		switch (s_pCurrentCmd[0])
 		{
-		case 'R':
-		{
-			const int iCheckSum = s_rgValuesCmd[1 /* WAIT_FOR_MHZ */] ^ s_rgValuesCmd[2 /* WAIT_FOR_kHZ */]; // these indexes are command specific
-			_ASSERT(iCheckSum == s_rgValuesCmd[12 /* WAIT_FOR_CHK */]);
-			const int iFrequence = s_rgValuesCmd[1 /* WAIT_FOR_MHZ */] * 1000 + s_rgValuesCmd[2 /* WAIT_FOR_kHZ */] * 5;
-			const char szStation[9] = { s_rgValuesCmd[3], s_rgValuesCmd[4], s_rgValuesCmd[5], s_rgValuesCmd[6], s_rgValuesCmd[7], s_rgValuesCmd[8], s_rgValuesCmd[9], '\0' }; // WAIT_FOR_N0 - WAIT_FOR_N7
-			// ATLTRACE2(atlTraceGeneral, 0, _T("command R, %hs complete\n"), szStation);
-			CString strCommand;
-			strCommand.Format(R_CMD_FORMAT_JSON, iFrequence, szStation, s_rgValuesCmd[11 /* WAIT_FOR_MNR */]);
-			const size_t _size = strCommand.GetLength() + 1;
-			PTCHAR lParam = new TCHAR[_size];
-			_tcscpy_s(lParam, _size, strCommand.GetBuffer());
-			::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM('R', 0), (LPARAM) lParam);
+			case 'R':
+			{
+#ifdef R_CMD_WITHOUT_MEM
+				const int iCheckSum = s_rgValuesCmd[1 /* WAIT_FOR_MHZ */] ^ s_rgValuesCmd[2 /* WAIT_FOR_kHZ */]; // these indexes are command specific
+				_ASSERT(iCheckSum == s_rgValuesCmd[11 /* WAIT_FOR_CHK */]);
+				const int iFrequence = s_rgValuesCmd[1 /* WAIT_FOR_MHZ */] * 1000 + s_rgValuesCmd[2 /* WAIT_FOR_kHZ */] * 5;
+				const char szStation[9] = { s_rgValuesCmd[3], s_rgValuesCmd[4], s_rgValuesCmd[5], s_rgValuesCmd[6], s_rgValuesCmd[7], s_rgValuesCmd[8], s_rgValuesCmd[9], s_rgValuesCmd[10], '\0' }; // WAIT_FOR_N0 - WAIT_FOR_N7
+				// ATLTRACE2(atlTraceGeneral, 0, _T("command R, %hs complete\n"), szStation);
+				CString strCommand;
+				strCommand.Format(R_CMD_FORMAT_JSON, iFrequence, szStation);
+				const size_t _size = strCommand.GetLength() + 1;
+				PTCHAR lParam = new TCHAR[_size];
+				_tcscpy_s(lParam, _size, strCommand.GetBuffer());
+				::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM('R', 0), (LPARAM)lParam);
+
+#else
+				const int iCheckSum = s_rgValuesCmd[1 /* WAIT_FOR_MHZ */] ^ s_rgValuesCmd[2 /* WAIT_FOR_kHZ */]; // these indexes are command specific
+				_ASSERT(iCheckSum == s_rgValuesCmd[12 /* WAIT_FOR_CHK */]);
+				const int iFrequence = s_rgValuesCmd[1 /* WAIT_FOR_MHZ */] * 1000 + s_rgValuesCmd[2 /* WAIT_FOR_kHZ */] * 5;
+				const char szStation[9] = { s_rgValuesCmd[3], s_rgValuesCmd[4], s_rgValuesCmd[5], s_rgValuesCmd[6], s_rgValuesCmd[7], s_rgValuesCmd[8], s_rgValuesCmd[9], s_rgValuesCmd[10], '\0' }; // WAIT_FOR_N0 - WAIT_FOR_N7
+				// ATLTRACE2(atlTraceGeneral, 0, _T("command R, %hs complete\n"), szStation);
+				CString strCommand;
+				strCommand.Format(R_CMD_FORMAT_JSON, iFrequence, szStation, s_rgValuesCmd[11 /* WAIT_FOR_MNR */]);
+				const size_t _size = strCommand.GetLength() + 1;
+				PTCHAR lParam = new TCHAR[_size];
+				_tcscpy_s(lParam, _size, strCommand.GetBuffer());
+				::PostMessage(hwndMainDlg, WM_USER_RXDECODEDCMD, MAKEWPARAM('R', 0), (LPARAM) lParam);
+#endif
 			}
 			break;
-		default:
-			ATLTRACE2(atlTraceGeneral, 0, _T("  command %c and arguments complete\n"), s_pCurrentCmd[0]);
-			break;
+			default:
+				ATLTRACE2(atlTraceGeneral, 0, _T("  command %c and arguments complete\n"), s_pCurrentCmd[0]);
+				break;
 		}
 		s_pCurrentCmd = NULL; // wait for / reset to - next command
 		s_iIndexCmd = 1;
