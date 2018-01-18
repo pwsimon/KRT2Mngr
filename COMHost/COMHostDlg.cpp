@@ -965,7 +965,12 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 		{
 			case 'A':
 			{
-				const int iCheckSum = s_rgValuesCmd[2 /* squelch */] ^ s_rgValuesCmd[3 /* VOX */]; // these indexes are command specific
+				/*
+				* die iCheckSum wird aus der SUMME (+) von squelch und VOX gebildet
+				* Hinweis:
+				*   ich hatte die doku so interpretiert das hier squelch UND VOX xor verknuepft werden
+				*/
+				const int iCheckSum = s_rgValuesCmd[2 /* squelch */] + s_rgValuesCmd[3 /* VOX */]; // these indexes are command specific
 				_ASSERT(iCheckSum == s_rgValuesCmd[4 /* WAIT_FOR_CHK */]);
 				CString strCommand;
 				strCommand.Format(A_CMD_FORMAT_JSON, s_rgValuesCmd[1 /* Volume */], s_rgValuesCmd[2 /* squelch */], s_rgValuesCmd[3 /* VOX */]);
