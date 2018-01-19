@@ -23,6 +23,7 @@ protected:
 	HICON m_hIcon;
 	int m_iRetCWSAStartup;
 	SOCKADDR_BTH m_addrKRT2;
+	SOCKADDR_IN m_addrSimulator; // Ipv4
 	size_t           m_AddrSimulatorLength;
 	struct sockaddr* m_pAddrSimulator;
 
@@ -46,7 +47,8 @@ private:
 	HRESULT enumBTDevices(GUID serviceClass);
 	HRESULT enumBTServices(LPCWSTR szDeviceAddress, GUID serviceClass);
 	HRESULT Connect(PSOCKADDR_BTH RemoteAddr);
-	HRESULT Connect(struct sockaddr* pAddrSimulator);
+	HRESULT Connect(PSOCKADDR_IN addrServer);
+	HRESULT Connect(struct sockaddr* pAddrSimulator, size_t sAddrSimulatorLength);
 	static HRESULT NameToBthAddr(const LPWSTR pszRemoteName, PSOCKADDR_BTH pRemoteBtAddr);
 	static HRESULT NameToTCPAddr(const LPWSTR pszRemoteName, size_t& sAddrSimulatorLength, struct sockaddr** ppAddrSimulator);
 	static HRESULT BTAddressToString(BLUETOOTH_ADDRESS* pBTAddr, BSTR* pbstrAddress);

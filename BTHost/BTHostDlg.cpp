@@ -66,6 +66,11 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	m_addrKRT2.serviceClassId = CLSID_NULL; // SerialPortServiceClass_UUID
 	m_addrKRT2.port = 1UL;
 	*/
+
+	m_addrSimulator.sin_family = AF_INET;
+	m_addrSimulator.sin_port = ::htons(80);
+	// m_addrSimulator.sin_addr.s_addr = ::inet_addr("127.0.0.1"); // stdafx.h(18) #define _WINSOCK_DEPRECATED_NO_WARNINGS or
+	::InetPton(AF_INET, L"127.0.0.1", &m_addrSimulator.sin_addr);
 }
 
 void CBTHostDlg::DoDataExchange(CDataExchange* pDX)
@@ -203,6 +208,12 @@ HRESULT CBTHostDlg::OnCheck(IHTMLElement* /*pElement*/)
 HRESULT CBTHostDlg::OnConnect(IHTMLElement* /*pElement*/)
 {
 	HRESULT hr = CBTHostDlg::NameToTCPAddr(L"localhost", m_AddrSimulatorLength, &m_pAddrSimulator);
+	if (SUCCEEDED(hr))
+	{
+		Connect(&m_addrSimulator); // IpAddr, OHNE DNS, wird im constructor gebaut
+		Connect(m_pAddrSimulator, m_AddrSimulatorLength);
+	}
+
 	/* HRESULT hr = CBTHostDlg::NameToBthAddr(L"KRT21885", &m_addrKRT2);
 	if (SUCCEEDED(hr))
 	{
@@ -353,6 +364,7 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 
 		sAddrSimulatorLength = ptr->ai_addrlen;
 		*ppAddrSimulator = (struct sockaddr*)new unsigned char[ptr->ai_addrlen];
+		memcpy(*ppAddrSimulator, ptr->ai_addr, ptr->ai_addrlen);
 		break;
 	}
 	::freeaddrinfo(result);
@@ -366,16 +378,42 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 	return NOERROR;
 }
 
-HRESULT CBTHostDlg::Connect(struct sockaddr* pAddrSimulator)
+HRESULT CBTHostDlg::Connect(
+	PSOCKADDR_IN addrServer)
+{
+	return E_NOTIMPL;
+}
+
+/*
+* HTTP Request using Sockets in C, https://stackoverflow.com/questions/30470505/http-request-using-sockets-in-c?rq=1
+* most simple
+*/
+HRESULT CBTHostDlg::Connect(
+	struct sockaddr* pAddrSimulator,
+	size_t sAddrSimulatorLength)
 {
 	/*
 	* socket Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms740506(v=vs.85).aspx
 	* SOCKET LocalSocket = ::socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
 	*/
-	SOCKET LocalSocket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	SOCKET LocalSocket = ::socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP); // AF_INET
 	if (INVALID_SOCKET != LocalSocket)
 	{
-		SOCKET socketKRT2 = ::connect(LocalSocket, pAddrSimulator, sizeof(SOCKADDR_BTH));
+		if (INVALID_SOCKET != ::connect(LocalSocket, pAddrSimulator, sAddrSimulatorLength))
+		{
+			char* header = "GET /index.html HTTP/1.1\nHost: www.example.com\n";
+			if (SOCKET_ERROR == ::send(LocalSocket, header, sizeof header, 0))
+				CBTHostDlg::ShowWSALastError(_T("::send(LocalSocket, ...)"));
+
+			// byte_count = ::recv(LocalSocket, buf, sizeof buf, 0);
+		}
+		else
+			CBTHostDlg::ShowWSALastError(_T("::connect(LocalSocket, ...)"));
+
+		if (SOCKET_ERROR == ::closesocket(LocalSocket))
+			CBTHostDlg::ShowWSALastError(_T("::closesocket"));
+
+		LocalSocket = INVALID_SOCKET;
 	}
 	return NOERROR;
 }
