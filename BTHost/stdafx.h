@@ -31,6 +31,7 @@
 
 #include <bluetoothapis.h>
 #include <ws2bth.h>
+#include <ws2tcpip.h>
 
 #ifdef _UNICODE
 #if defined _M_IX86

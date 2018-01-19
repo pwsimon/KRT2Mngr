@@ -202,13 +202,13 @@ HRESULT CBTHostDlg::OnCheck(IHTMLElement* /*pElement*/)
 
 HRESULT CBTHostDlg::OnConnect(IHTMLElement* /*pElement*/)
 {
-	HRESULT hr = CBTHostDlg::NameToBthAddr(L"KRT21885", &m_addrKRT2);
+	HRESULT hr = CBTHostDlg::NameToTCPAddr(L"localhost", m_AddrSimulatorLength, &m_pAddrSimulator);
+	/* HRESULT hr = CBTHostDlg::NameToBthAddr(L"KRT21885", &m_addrKRT2);
 	if (SUCCEEDED(hr))
 	{
 		m_addrKRT2.port = 1UL;
 		Connect(&m_addrKRT2);
-	}
-
+	} */
 	return S_OK;
 }
 
@@ -308,6 +308,76 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 		pszData = NULL;
 	}
 	return E_FAIL;
+}
+
+/*static*/ HRESULT CBTHostDlg::NameToTCPAddr(
+	const LPWSTR pszRemoteName,            // IN
+	size_t&           sAddrSimulatorLength, // OUT
+	struct sockaddr** ppAddrSimulator)
+{
+	USES_CONVERSION;
+
+	struct addrinfo hints;
+	::ZeroMemory(&hints, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+
+	// Resolve the server address and port
+	struct addrinfo* result = NULL;
+	int iResult = ::getaddrinfo(W2CA(pszRemoteName), "80", &hints, &result);
+	if (iResult != 0) {
+		ATLTRACE2(atlTraceGeneral, 0, _T("getaddrinfo failed with error: %d\n"), iResult);
+		::WSACleanup();
+		return E_FAIL;
+	}
+
+	// Attempt to connect to an address until one succeeds
+	SOCKET ConnectSocket = INVALID_SOCKET;
+	for (struct addrinfo* ptr = result; ptr != NULL; ptr = ptr->ai_next) {
+		// Create a SOCKET for connecting to server
+		ConnectSocket = ::socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
+		if (ConnectSocket == INVALID_SOCKET) {
+			ATLTRACE2(atlTraceGeneral, 0, _T("socket failed with error: %ld\n"), ::WSAGetLastError());
+			::WSACleanup();
+			return E_FAIL;
+		}
+
+		// Connect to server.
+		iResult = ::connect(ConnectSocket, ptr->ai_addr, (int)ptr->ai_addrlen);
+		if (iResult == SOCKET_ERROR) {
+			::closesocket(ConnectSocket);
+			ConnectSocket = INVALID_SOCKET;
+			continue;
+		}
+
+		sAddrSimulatorLength = ptr->ai_addrlen;
+		*ppAddrSimulator = (struct sockaddr*)new unsigned char[ptr->ai_addrlen];
+		break;
+	}
+	::freeaddrinfo(result);
+
+	if (ConnectSocket == INVALID_SOCKET) {
+		ATLTRACE2(atlTraceGeneral, 0, _T("Unable to connect to server!\n"));
+		::WSACleanup();
+		return E_FAIL;
+	}
+	::closesocket(ConnectSocket);
+	return NOERROR;
+}
+
+HRESULT CBTHostDlg::Connect(struct sockaddr* pAddrSimulator)
+{
+	/*
+	* socket Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms740506(v=vs.85).aspx
+	* SOCKET LocalSocket = ::socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+	*/
+	SOCKET LocalSocket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (INVALID_SOCKET != LocalSocket)
+	{
+		SOCKET socketKRT2 = ::connect(LocalSocket, pAddrSimulator, sizeof(SOCKADDR_BTH));
+	}
+	return NOERROR;
 }
 
 HRESULT CBTHostDlg::enumBTDevices(GUID serviceClass)
