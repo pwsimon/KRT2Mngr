@@ -414,9 +414,57 @@ HRESULT CBTHostDlg::Connect(
 			if (SOCKET_ERROR == ::send(LocalSocket, szHeader, strlen(szHeader), 0))
 				CBTHostDlg::ShowWSALastError(_T("::send(LocalSocket, ...)"));
 
+#define IOCOMPLETION
+#ifdef IOCOMPLETION
+			// Make sure the RecvOverlapped struct is zeroed out
+			WSAOVERLAPPED RecvOverlapped;
+			SecureZeroMemory((PVOID)& RecvOverlapped, sizeof(WSAOVERLAPPED));
+			RecvOverlapped.hEvent = WSACreateEvent();
+
+			// WSARecv function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms741688(v=vs.85).aspx
+			char buf[0x1];
+			WSABUF readBuffer = { _countof(buf), buf };
+			DWORD dwNumberOfBytesRecvd = 0;
+			DWORD dwFlags = 0;
+			while (1)
+			{
+				int iLastError = 0;
+				int iRetC = ::WSARecv(LocalSocket, &readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &RecvOverlapped, NULL);
+				if ((iRetC == SOCKET_ERROR) && (WSA_IO_PENDING != (iLastError = ::WSAGetLastError())))
+				{
+					ATLTRACE2(atlTraceGeneral, 0, _T("::WSARecv() failed with error: 0x%.8x\n"), iLastError);
+					break;
+				}
+
+				iRetC = ::WSAWaitForMultipleEvents(1, &RecvOverlapped.hEvent, TRUE, INFINITE, TRUE);
+				if (WSA_WAIT_FAILED == iRetC)
+				{
+					ATLTRACE2(atlTraceGeneral, 0, _T("::WSAWaitForMultipleEvents() failed with error: 0x%.8x\n"), ::WSAGetLastError());
+					break;
+				}
+
+				iRetC = ::WSAGetOverlappedResult(LocalSocket, &RecvOverlapped, &dwNumberOfBytesRecvd, FALSE, &dwFlags);
+				if (FALSE == iRetC)
+				{
+					ATLTRACE2(atlTraceGeneral, 0, _T("::WSARecv() failed with error: 0x%.8x\n"), ::WSAGetLastError());
+					break;
+				}
+
+				ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received: 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
+
+				::WSAResetEvent(RecvOverlapped.hEvent);
+
+				// If 0 bytes are received, the connection was closed
+				if (0 == dwNumberOfBytesRecvd)
+					break;
+			}
+			::WSACloseEvent(RecvOverlapped.hEvent);
+
+#else
 			char buf[0x1000];
 			const int iByteCount = ::recv(LocalSocket, buf, _countof(buf), 0);
 			ATLTRACE2(atlTraceGeneral, 0, _T("  number of bytes received: 0x%.8x\n"), iByteCount);
+#endif
 		}
 		else
 			CBTHostDlg::ShowWSALastError(_T("::connect(LocalSocket, ...)"));
