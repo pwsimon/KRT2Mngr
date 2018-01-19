@@ -23,7 +23,7 @@ protected:
 	HICON m_hIcon;
 	int m_iRetCWSAStartup;
 	SOCKADDR_BTH m_addrKRT2;
-	SOCKADDR_IN m_addrSimulator; // Ipv4
+	SOCKADDR_IN m_addrSimulator; // IPv4
 	size_t           m_AddrSimulatorLength;
 	struct sockaddr* m_pAddrSimulator;
 

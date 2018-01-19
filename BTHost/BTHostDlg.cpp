@@ -70,7 +70,16 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	m_addrSimulator.sin_family = AF_INET;
 	m_addrSimulator.sin_port = ::htons(80);
 	// m_addrSimulator.sin_addr.s_addr = ::inet_addr("127.0.0.1"); // stdafx.h(18) #define _WINSOCK_DEPRECATED_NO_WARNINGS or
-	::InetPton(AF_INET, L"127.0.0.1", &m_addrSimulator.sin_addr);
+	switch (::InetPton(AF_INET, L"127.0.0.1", &m_addrSimulator.sin_addr)) // wir wollen explicit eine IPv4 addresse
+	{
+	case 0: // invalid (String encoded) address
+		break;
+	case 1: // succeeded
+		break;
+	default:
+		::WSAGetLastError();
+		break;
+	}
 }
 
 void CBTHostDlg::DoDataExchange(CDataExchange* pDX)
@@ -207,19 +216,27 @@ HRESULT CBTHostDlg::OnCheck(IHTMLElement* /*pElement*/)
 
 HRESULT CBTHostDlg::OnConnect(IHTMLElement* /*pElement*/)
 {
-	HRESULT hr = CBTHostDlg::NameToTCPAddr(L"localhost", m_AddrSimulatorLength, &m_pAddrSimulator);
+	HRESULT hr = E_NOTIMPL;
+
+#ifdef KRT2INPUT_SERVER
+	hr = Connect(&m_addrSimulator); // IPv4 Addr, OHNE DNS, wird im constructor gebaut
+
+	/* hr = CBTHostDlg::NameToTCPAddr(KRT2INPUT_SERVER, m_AddrSimulatorLength, &m_pAddrSimulator);
 	if (SUCCEEDED(hr))
 	{
-		Connect(&m_addrSimulator); // IpAddr, OHNE DNS, wird im constructor gebaut
-		Connect(m_pAddrSimulator, m_AddrSimulatorLength);
-	}
+		Connect(m_pAddrSimulator, m_AddrSimulatorLength); // IPv6 wird mit CBTHostDlg::NameToTCPAddr() gebaut
+	} */
+#endif
 
-	/* HRESULT hr = CBTHostDlg::NameToBthAddr(L"KRT21885", &m_addrKRT2);
+#ifdef KRT2INPUT_BT
+	hr = CBTHostDlg::NameToBthAddr(KRT2INPUT_BT, &m_addrKRT2);
 	if (SUCCEEDED(hr))
 	{
 		m_addrKRT2.port = 1UL;
 		Connect(&m_addrKRT2);
-	} */
+	}
+#endif
+
 	return S_OK;
 }
 
@@ -321,6 +338,9 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 	return E_FAIL;
 }
 
+/*
+* caller is responsible to free *ppAddrSimulator
+*/
 /*static*/ HRESULT CBTHostDlg::NameToTCPAddr(
 	const LPWSTR pszRemoteName,            // IN
 	size_t&           sAddrSimulatorLength, // OUT
@@ -338,7 +358,7 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 	struct addrinfo* result = NULL;
 	int iResult = ::getaddrinfo(W2CA(pszRemoteName), "80", &hints, &result);
 	if (iResult != 0) {
-		ATLTRACE2(atlTraceGeneral, 0, _T("getaddrinfo failed with error: %d\n"), iResult);
+		ATLTRACE2(atlTraceGeneral, 0, _T("::getaddrinfo() failed with error: %d\n"), iResult);
 		::WSACleanup();
 		return E_FAIL;
 	}
@@ -381,7 +401,32 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 HRESULT CBTHostDlg::Connect(
 	PSOCKADDR_IN addrServer)
 {
-	return E_NOTIMPL;
+	/*
+	* socket Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms740506(v=vs.85).aspx
+	* der call MUSS sicherstellen das die "addrServer" auch wirklich eine IPv4 (AF_INET) enthaelt
+	*/
+	SOCKET LocalSocket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (INVALID_SOCKET != LocalSocket)
+	{
+		if (INVALID_SOCKET != ::connect(LocalSocket, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
+		{
+			char* szHeader = "GET " KRT2INPUT_PATH " HTTP/1.1\r\nHost: ws-psi.estos.de\r\n\r\n";
+			if (SOCKET_ERROR == ::send(LocalSocket, szHeader, strlen(szHeader), 0))
+				CBTHostDlg::ShowWSALastError(_T("::send(LocalSocket, ...)"));
+
+			char buf[0x1000];
+			const int iByteCount = ::recv(LocalSocket, buf, _countof(buf), 0);
+			ATLTRACE2(atlTraceGeneral, 0, _T("  number of bytes received: 0x%.8x\n"), iByteCount);
+		}
+		else
+			CBTHostDlg::ShowWSALastError(_T("::connect(LocalSocket, ...)"));
+
+		if (SOCKET_ERROR == ::closesocket(LocalSocket))
+			CBTHostDlg::ShowWSALastError(_T("::closesocket"));
+
+		LocalSocket = INVALID_SOCKET;
+	}
+	return NOERROR;
 }
 
 /*
