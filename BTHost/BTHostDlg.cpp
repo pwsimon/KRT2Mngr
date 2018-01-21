@@ -143,6 +143,8 @@ END_MESSAGE_MAP()
 
 /*virtual*/ void CBTHostDlg::OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl)
 {
+	CDHtmlDialog::OnDocumentComplete(pDisp, szUrl);
+
 	// SetElementProperty(_T("btnSoft1"), DISPID_VALUE, &CComVariant(L"Check hurtz")); // for <input> elements
 	SetElementText(_T("btnSoft1"), _T("Check SPP"));
 	SetElementText(_T("btnSoft2"), _T("Connect"));
