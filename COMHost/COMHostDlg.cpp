@@ -99,7 +99,7 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 	*     COMHost.cpp(44): CCOMHostApp::InitInstance()
 	*     HKEY_CURRENT_USER\SOFTWARE\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\COMHost.exe (REG_DWORD) 11000
 	*/
-	// m_nHtmlResID = 0;
+	m_nHtmlResID = 0;
 	// m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
 	m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
 	CCommandLineInfo cmdLI;
@@ -147,6 +147,12 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 /*virtual*/ BOOL CCOMHostDlg::IsExternalDispatchSafe()
 {
 	return TRUE; // __super::IsExternalDispatchSafe();
+}
+
+/*virtual*/ void CCOMHostDlg::OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl)
+{
+	CDHtmlDialog::OnDocumentComplete(pDisp, szUrl);
+	SetElementText(_T("btnSoft1"), _T("InitInputOutput"));
 }
 
 // CCOMHostDlg message handlers
