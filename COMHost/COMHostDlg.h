@@ -35,6 +35,7 @@ protected:
 	HANDLE m_hReadThread;
 	static unsigned int __stdcall COMReadThread(void* arguments);
 	static HRESULT DriveStateMachine(HWND hwndMainDlg, BYTE byte, BOOL bAsynchronous);
+	static HRESULT DriveRead(HWND hwndMainDlg, BYTE byte);
 	static enum _KRT2StateMachine DriveCommand(HWND hwndMainDlg, BYTE byte);
 	static DWORD SignalObjectAndWait(HANDLE hEvtTerminate, HANDLE hThread);
 
@@ -47,6 +48,7 @@ protected:
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
 	afx_msg void OnClose();
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg LRESULT OnAck(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnRXSingleByte(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnRXDecodedCmd(WPARAM wParam, LPARAM lParam);
@@ -54,9 +56,12 @@ protected:
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
 	HRESULT InitInputOutput(IHTMLElement*);
+	HRESULT ReceiveAck(IHTMLElement*);
+	HRESULT sendAck();
 
 	DECLARE_DISPATCH_MAP()
-	void sendCommand(BSTR bstrCommand, LPDISPATCH spCallback);
+	long sendCommand(BSTR bstrCommand, LPDISPATCH spCallback);
+	CComDispatchDriver m_ddSendCommand;
 	void receiveCommand(LPDISPATCH pCallback);
 	CComBSTR m_bstrReceiveCommand;
 	CComDispatchDriver m_ddReceiveCommand;

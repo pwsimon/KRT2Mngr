@@ -50,5 +50,5 @@
 * mit KRT2COMPORT teilen sich die empfaenger und die sender routine ein handle (hCOMPort)
 */
 // #define KRT2INPUT  _T("krt2input.bin")
-// #define KRT2OUTPUT _T("krt2output.bin")
-#define KRT2COMPORT _T("COM5")
+#define KRT2OUTPUT _T("krt2output.bin")
+// #define KRT2COMPORT _T("COM5")
