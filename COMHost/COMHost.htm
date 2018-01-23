@@ -58,8 +58,8 @@ function sendMultipleCommands() {
 				document.getElementById('command').innerText = 'transmit failed with: ' + error;
 			else {
 				document.getElementById('command').innerText = 'transmit completed';
-				nIndex++;
-				fnSendCommand();
+				if (rgCommands.length > ++nIndex)
+					fnSendCommand();
 			}
 		});
 	})();
