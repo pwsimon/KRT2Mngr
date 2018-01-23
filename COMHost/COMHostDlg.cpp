@@ -237,9 +237,9 @@ void CCOMHostDlg::OnTimer(UINT_PTR nIDEvent)
 	if (nIDEvent == SEND_TIMEOUT)
 	{
 		KillTimer(SEND_TIMEOUT);
+		s_hrSend = NOERROR;
 		m_ddSendCommand.Invoke2((DISPID)0, &CComVariant(_T("timeout")), &CComVariant());
 		m_ddSendCommand.Release();
-		s_hrSend = NOERROR;
 	}
 
 	CDHtmlDialog::OnTimer(nIDEvent);
@@ -277,14 +277,20 @@ void CCOMHostDlg::OnClose()
 	CDHtmlDialog::OnClose();
 }
 
+/*
+* wir behandeln hier ZWEI unterschiedliche Ack
+* - wenn wir ein Command abgeschickt haben verarbeiten wir das Ack indem wir es an unser Script als SUCCEEDED antwort liefern
+* - wenn wir im IDLE zustand sind und ein PING ('S') empfangen schicken wir ein Ack zur bestaetigung an das KRT2
+*/
 LRESULT CCOMHostDlg::OnAck(WPARAM wParam, LPARAM lParam)
 {
 	if (!m_ddSendCommand)
 		sendAck(); // im gegensatz zu sendCommand() verzweigen/stacken wir hier kein "Command"
 	else
 	{
-		m_ddSendCommand.Invoke2((DISPID)0, &CComVariant(/* VT_EMPTY */), &CComVariant());
-		m_ddReceiveCommand.Release();
+		s_hrSend = NOERROR;
+		CComDispatchDriver dd(m_ddSendCommand.Detach()); // wg. synchron
+		dd.Invoke2((DISPID)0, &CComVariant(/* VT_EMPTY */), &CComVariant(_T("automatic")));
 	}
 
 	return 0;
@@ -398,9 +404,16 @@ HRESULT CCOMHostDlg::ReceiveAck(IHTMLElement*)
 	if (m_ddSendCommand)
 	{
 		KillTimer(SEND_TIMEOUT);
-		m_ddSendCommand.Invoke2((DISPID)0, &CComVariant(), &CComVariant(_T("timeout")));
-		m_ddSendCommand.Release();
+		/*
+		* wir setzen ZUERST das s_hrSend (Flag) zurueck und DANN rufen wir, synchron, in den CallBack
+		* so kann der CallBack selbst wieder, synchron, sendCommandaufrufen
+		* wir brauchen dieses special fuer den recursiven javascript aufruf mit sendMultipleCommands
+		* das gleiche procedere mit dem m_ddSendCommand (nicht so schoen, vieleicht doch ueber ein Post verzoegern???)
+		*/
 		s_hrSend = NOERROR;
+		CComDispatchDriver dd(m_ddSendCommand.Detach());
+		m_ddSendCommand.Release();
+		dd.Invoke2((DISPID)0, &CComVariant(), &CComVariant(_T("manual")));
 	}
 	return NOERROR;
 }
@@ -442,6 +455,9 @@ long CCOMHostDlg::sendCommand(
 	}
 
 	ATLTRACE2(atlTraceGeneral, 0, _T("  accept send, command: %ls\n"), bstrCommand);
+	_ASSERT(NULL != pCallback);
+	_ASSERT(NULL == m_ddSendCommand);
+
 #ifdef KRT2COMPORT
 	DCB dcb;
 	::ZeroMemory(&dcb, sizeof(DCB));
@@ -842,8 +858,8 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 	if (E_PENDING == s_hrSend)
 	{
 		// DriveSend
-		::PostMessage(hwndMainDlg, WM_USER_ACK, MAKEWPARAM(byte, 0), (LPARAM)NULL);
 		s_hrSend = NOERROR; // send complete, return to receive mode
+		::PostMessage(hwndMainDlg, WM_USER_ACK, MAKEWPARAM(byte, 0), (LPARAM)NULL);
 	}
 	else
 		hr = CCOMHostDlg::DriveRead(hwndMainDlg, byte);
