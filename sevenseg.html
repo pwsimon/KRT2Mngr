@@ -143,15 +143,16 @@ function uploadToKRT2() {
 	console.log("rgCommands.length: ", rgCommands.length);
 	(function fnSendCommand() {
 		window.external.sendCommand(rgCommands[nIndex], function (error, result) {
-			if (error)
-				document.getElementById('command').innerText = 'transmit failed with: ' + error;
-			else {
+			if (error) {
+				document.getElementById('command').innerText = 'transmit failed with: ' + error + ', STOP at: ' + nIndex;
+			} else {
 				document.getElementById('command').innerText = 'transmit completed';
 				if (rgCommands.length > ++nIndex)
-					fnSendCommand();
+					fnSendCommand(); // continue thru recursion
 			}
 		});
-		document.getElementById('command').innerText = '  wait for complete: ' + nIndex;
+		// progress
+		// document.getElementById('command').innerText = '  wait for complete: ' + nIndex;
 	})();
 }
 	</script>
@@ -166,12 +167,12 @@ function uploadToKRT2() {
 		-->
 			<img id="KRT2Panel" src="krt2old.png" usemap="#buttonmap">
 			<map name="buttonmap">
-				<area title="Power-On/Off" href="javascript:uploadToKRT2()" shape="rect" coords="86,30,142,82" />
-				<area title="toggle DUALMode" href="#" shape="rect" coords="153,34,202,81" />
-				<area title="AUD" href="#" shape="rect" coords="218,35,264,81" />
-				<area title="Memory" href="#" shape="rect" coords="97,275,144,323" />
-				<area title="switch" href="#" shape="rect" coords="162,276,202,318" />
-				<area title="Frequence" href="#" shape="rect" coords="221,275,264,320" />
+				<area title="Power-On/Off" onclick="uploadToKRT2()" shape="rect" coords="86,30,142,82" />
+				<area title="toggle DUALMode" shape="rect" coords="153,34,202,81" />
+				<area title="AUD" shape="rect" coords="218,35,264,81" />
+				<area title="Memory" shape="rect" coords="97,275,144,323" />
+				<area title="switch" shape="rect" coords="162,276,202,318" />
+				<area title="Frequence" shape="rect" coords="221,275,264,320" />
 			</map>
 		</div>
 		<div class="rightCol">
