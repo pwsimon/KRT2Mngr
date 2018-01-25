@@ -26,15 +26,43 @@ function receiveCommand() {
 		document.getElementById('command').innerText = sJSONCommand;
 	});
 }
-function sendCommand() {
-	var sPing         = "S",         // Interface_Ext_V18.pdf(2), 1.1 Activate the Remote connection
+function sendSingleCommand() {
+	var sPing = "S",         // Interface_Ext_V18.pdf(2), 1.1 Activate the Remote connection
 		sToggleActPas = "0x02 0x43", // Interface_Ext_V18.pdf(5), 1.3.2 Exchange of Frequencies (active against passive)
-		sDualModeOn   = "0x02 0x4f", // Interface_Ext_V18.pdf(5), 1.3.7 DUAL-mode on
-		sDualModeOff  = "0x02 0x6f"; // Interface_Ext_V18.pdf(5), 1.3.8 DUAL-mode off
+		sDualModeOn = "0x02 0x4f", // Interface_Ext_V18.pdf(5), 1.3.7 DUAL-mode on
+		sDualModeOff = "0x02 0x6f", // Interface_Ext_V18.pdf(5), 1.3.8 DUAL-mode off
+		lAccept;
 
-	window.external.sendCommand(sToggleActPas, function () {
-		document.getElementById('command').innerText = 'transmit completed';
+	lAccept = window.external.sendCommand(sToggleActPas, function (error, result) {
+		/*
+		* das command accepted jetzt ist der callback garantiert
+		*/
+		if(error)
+			document.getElementById('command').innerText = 'transmit failed with: ' + error;
+		else
+			document.getElementById('command').innerText = 'transmit completed';
 	});
+	if(lAccept)
+		document.getElementById('command').innerText = 'command rejected, buffer full/busy';
+}
+function sendMultipleCommands() {
+	var rgCommands = [
+			"0x02 0x43",   // Interface_Ext_V18.pdf(5), 1.3.2 Exchange of Frequencies (active against passive)
+			"0x02 0x4f",   // Interface_Ext_V18.pdf(5), 1.3.7 DUAL-mode on
+			"0x02 0x6f" ], // Interface_Ext_V18.pdf(5), 1.3.8 DUAL-mode off
+		nIndex = 0;
+
+	(function fnSendCommand() {
+		window.external.sendCommand(rgCommands[nIndex], function (error, result) {
+			if (error)
+				document.getElementById('command').innerText = 'transmit failed with: ' + error;
+			else {
+				document.getElementById('command').innerText = 'transmit completed';
+				if (rgCommands.length > ++nIndex)
+					fnSendCommand();
+			}
+		});
+	})();
 }
 	</script>
 </HEAD>
@@ -47,8 +75,9 @@ function sendCommand() {
 </TR>
 <TR WIDTH=100% HEIGHT=100%>
 <TD ALIGN=RIGHT VALIGN=BOTTOM>
-<BUTTON STYLE="WIDTH:100" ID="btnSoft1">InitInputOutput</BUTTON>&nbsp;
-<BUTTON STYLE="WIDTH:100" onclick="sendCommand()">Send</BUTTON>&nbsp;
+<BUTTON STYLE="WIDTH:100" ID="btnSoft1">undefined</BUTTON>&nbsp;
+<BUTTON STYLE="WIDTH:100" onclick="sendSingleCommand()">SendSingle</BUTTON>&nbsp;
+<BUTTON STYLE="WIDTH:100" onclick="sendMultipleCommands()">SendMultiple</BUTTON>&nbsp;
 <BUTTON STYLE="WIDTH:100" onclick="receiveCommand()">Read</BUTTON>
 </TD>
 </TR>

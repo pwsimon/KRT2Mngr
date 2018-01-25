@@ -6,12 +6,21 @@
 	<link rel="stylesheet" href="sevenseg.css">
 	<link rel="stylesheet" href="krt2panel.css">
 	<style>
+.cont {
+	display: flex;
+}
+.leftCol {
+	flex: 1;
+}
+.rightCol {
+	flex: 1;
+}
 .frequence {
 	height:     25px;
 	width:      200px;
 }
 #stationsCont {
-	height:     200px; /* die bildschirmhoehe von meinem ASUSPRO5IJC ist NICHT ausreichend */
+	height:     290px; /* die bildschirmhoehe von meinem ASUSPRO5IJC ist NICHT ausreichend */
 	overflow-y: scroll;
 }
 	</style>
@@ -94,73 +103,92 @@ $(document).ready(function () {
 	$('#file-input').on('change', PersistModul.readSingleFile);
 });
 function uploadToKRT2() {
-	PersistModul.rgStations.forEach(function (station, nStationIndex) {
-		var sFrequence = station.nFrequence,
-			nMHZ = Math.floor(station.nFrequence / 1000),
-			nKHZ = (station.nFrequence - nMHZ * 1000) / 5,
-			nChkSum = nMHZ ^ nKHZ,
+	var nIndex = 0,
+		rgCommands = PersistModul.rgStations.map(function (station, nStationIndex) {
+			var sFrequence = station.nFrequence,
+				nMHZ = Math.floor(station.nFrequence / 1000),
+				nKHZ = (station.nFrequence - nMHZ * 1000) / 5,
+				nChkSum = nMHZ ^ nKHZ,
+
+				/*
+				* 1.3.5 Set a single record & name to database with address
+				*/
+				rgCommand = [2, "Z".charCodeAt(0), nMHZ, nKHZ],
+				nIndex = 0,
+				sCommand = "";
+
+			for (nIndex; nIndex < station.sName.length; nIndex++)
+				rgCommand.push(station.sName.charCodeAt(nIndex));
 
 			/*
-			* 1.3.5 Set a single record & name to database with address
+			* ensure TextLength is 8 Byte
+			* String.prototype.padEnd(), https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/padEnd
+			* sorry not for Internet Explorer
 			*/
-			rgCommand = [ 2, "Z".charCodeAt(0), nMHZ, nKHZ ],
-			nIndex = 0,
-			sCommand = "";
+			for (nIndex = station.sName.length; nIndex <= 7 ; nIndex++)
+				rgCommand.push(" ".charCodeAt(0));
 
-		for (nIndex; nIndex < station.sName.length; nIndex++)
-			rgCommand.push(station.sName.charCodeAt(nIndex));
+			rgCommand.push(nStationIndex);
+			rgCommand.push(nChkSum);
 
-		/*
-		* ensure TextLength is 8 Byte
-		* String.prototype.padEnd(), https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/padEnd
-		* sorry not for Internet Explorer
-		*/
-		for (nIndex = station.sName.length; nIndex <= 7 ; nIndex++)
-			rgCommand.push(" ".charCodeAt(0));
-
-		rgCommand.push(nStationIndex);
-		rgCommand.push(nChkSum);
-
-		// einen string fuer die anzeige, hex codiert, space delemitted
-		rgCommand.forEach(function (digit) {
-			sCommand += "0x";
-			sCommand += 15 < digit ? digit.toString(16) : "0" + digit.toString(16); // ensure 2 Digits
-			sCommand += " ";
+			// einen string fuer die anzeige, hex codiert, space delemitted
+			rgCommand.forEach(function (digit) {
+				sCommand += "0x";
+				sCommand += 15 < digit ? digit.toString(16) : "0" + digit.toString(16); // ensure 2 Digits
+				sCommand += " ";
+			});
+			return sCommand;
 		});
-		console.log(sCommand);
-		$('#command').text(sCommand);
-		window.external.sendCommand(sCommand, function () { });
-	});
+
+	console.log("rgCommands.length: ", rgCommands.length);
+	(function fnSendCommand() {
+		window.external.sendCommand(rgCommands[nIndex], function (error, result) {
+			if (error) {
+				document.getElementById('command').innerText = 'transmit failed with: ' + error + ', STOP at: ' + nIndex;
+			} else {
+				document.getElementById('command').innerText = 'transmit completed';
+				if (rgCommands.length > ++nIndex)
+					fnSendCommand(); // continue thru recursion
+			}
+		});
+		// progress
+		// document.getElementById('command').innerText = '  wait for complete: ' + nIndex;
+	})();
 }
 	</script>
 </head>
 
 <body>
-	<!--
-		wenn ich eine map nutze darf ich das bild nicht scalieren
-		ImageMap Generator, http://imagemap-generator.dariodomi.de/
-	-->
-	<img id="KRT2Panel"src="krt2old.png" usemap="#buttonmap">
-	<map name="buttonmap">
-		<area title="Power-On/Off" href="javascript:uploadToKRT2()" shape="rect" coords="86,30,142,82" />
-		<area title="toggle DUALMode" href="#" shape="rect" coords="153,34,202,81" />
-		<area title="AUD" href="#" shape="rect" coords="218,35,264,81" />
-		<area title="Memory" href="#" shape="rect" coords="97,275,144,323" />
-		<area title="switch" href="#" shape="rect" coords="162,276,202,318" />
-		<area title="Frequence" href="#" shape="rect" coords="221,275,264,320" />
-	</map>
-	<div class="frequence" data-bind="sevenSeg: { digits: 6, value: station, allowInput: true, step: 0.025, decimalPlaces: 3 }"></div>
-	<hr/>
-	<input id="frequence" type="hidden" data-bind="value: station, valueUpdate: 'afterkeydown'" >
-	<p>
-		<span id="command"></span>
-		<button id="btnSoft1">Soft1</button>
-		<button id="btnSoft2">Soft2</button>
-	</p>
-	<div id="stationsCont">
-		<ol id="stations"></ol>
+	<div class="cont">
+		<div class="leftCol">
+			<!--
+			wenn ich eine map nutze darf ich das bild nicht scalieren
+			ImageMap Generator, http://imagemap-generator.dariodomi.de/
+		-->
+			<img id="KRT2Panel" src="krt2old.png" usemap="#buttonmap">
+			<map name="buttonmap">
+				<area title="Power-On/Off" onclick="uploadToKRT2()" shape="rect" coords="86,30,142,82" />
+				<area title="toggle DUALMode" shape="rect" coords="153,34,202,81" />
+				<area title="AUD" shape="rect" coords="218,35,264,81" />
+				<area title="Memory" shape="rect" coords="97,275,144,323" />
+				<area title="switch" shape="rect" coords="162,276,202,318" />
+				<area title="Frequence" shape="rect" coords="221,275,264,320" />
+			</map>
+		</div>
+		<div class="rightCol">
+			<input id="frequence" type="hidden" data-bind="value: station, valueUpdate: 'afterkeydown'">
+			<p>
+				<span id="command"></span>
+				<button id="btnSoft1">undefined</button>
+				<button id="btnSoft2">undefined</button>
+			</p>
+			<div id="stationsCont">
+				<ol id="stations"></ol>
+			</div>
+		</div>
 	</div>
 	<hr />
+	<div class="frequence" data-bind="sevenSeg: { digits: 6, value: station, allowInput: true, step: 0.025, decimalPlaces: 3 }"></div>
 	<input type="file" id="file-input" />
 </body>
 
