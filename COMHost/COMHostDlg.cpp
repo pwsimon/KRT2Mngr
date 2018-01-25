@@ -46,10 +46,34 @@ END_MESSAGE_MAP()
 #define WM_USER_RXSINGLEBYTE    (WM_USER + 2)
 #define WM_USER_RXDECODEDCMD    (WM_USER + 3)
 
-OVERLAPPED s_OverlappedRead;
+#define SEND_TIMEOUT            100
+
+/*
+* ueber diese statics wird mit dem GUI(Main)Thread kommuniziert der zugriff ist also zu sichern
+*/
+enum _KRT2StateMachine
+{
+	END,
+	IDLE,
+	WAIT_FOR_CMD,
+	WAIT_FOR_MHZ,
+	WAIT_FOR_kHZ,
+	WAIT_FOR_N0,
+	WAIT_FOR_N1,
+	WAIT_FOR_N2,
+	WAIT_FOR_N3,
+	WAIT_FOR_N4,
+	WAIT_FOR_N5,
+	WAIT_FOR_N6,
+	WAIT_FOR_N7,
+	WAIT_FOR_MNR,
+	WAIT_FOR_CHK
+} s_state = IDLE;
+HRESULT s_hrSend = NOERROR;
 
 BEGIN_DHTML_EVENT_MAP(CCOMHostDlg)
-	DHTML_EVENT_ONCLICK(_T("btnSoft1"), InitInputOutput) // soft buttons
+	// DHTML_EVENT_ONCLICK(_T("btnSoft1"), InitInputOutput) // soft buttons
+	DHTML_EVENT_ONCLICK(_T("btnSoft1"), ReceiveAck)
 END_DHTML_EVENT_MAP()
 
 BEGIN_MESSAGE_MAP(CCOMHostDlg, CDHtmlDialog)
@@ -58,10 +82,11 @@ BEGIN_MESSAGE_MAP(CCOMHostDlg, CDHtmlDialog)
 	ON_MESSAGE(WM_USER_ACK, OnAck)
 	ON_MESSAGE(WM_USER_RXSINGLEBYTE, OnRXSingleByte)
 	ON_MESSAGE(WM_USER_RXDECODEDCMD, OnRXDecodedCmd)
+	ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 BEGIN_DISPATCH_MAP(CCOMHostDlg, CDHtmlDialog)
-	DISP_FUNCTION(CCOMHostDlg, "sendCommand", sendCommand, VT_EMPTY, VTS_BSTR VTS_DISPATCH)
+	DISP_FUNCTION(CCOMHostDlg, "sendCommand", sendCommand, VT_I4, VTS_BSTR VTS_DISPATCH)
 	DISP_FUNCTION(CCOMHostDlg, "receiveCommand", receiveCommand, VT_EMPTY, VTS_DISPATCH)
 END_DISPATCH_MAP()
 
@@ -101,7 +126,7 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 	*     COMHost.cpp(44): CCOMHostApp::InitInstance()
 	*     HKEY_CURRENT_USER\SOFTWARE\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\COMHost.exe (REG_DWORD) 11000
 	*/
-	// m_nHtmlResID = 0;
+	m_nHtmlResID = 0;
 	// m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
 	m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
 	CCommandLineInfo cmdLI;
@@ -140,8 +165,8 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 	/*
 	* TODO: Add extra initialization here
 	* das initialisieren des Input/Output stream gleich hier ist mir etwas zu "hart"
-	InitInputOutput(NULL);
 	*/
+	InitInputOutput(NULL);
 
 	return TRUE; // return TRUE  unless you set the focus to a control
 }
@@ -149,6 +174,13 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 /*virtual*/ BOOL CCOMHostDlg::IsExternalDispatchSafe()
 {
 	return TRUE; // __super::IsExternalDispatchSafe();
+}
+
+/*virtual*/ void CCOMHostDlg::OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl)
+{
+	CDHtmlDialog::OnDocumentComplete(pDisp, szUrl);
+	// SetElementText(_T("btnSoft1"), _T("InitInputOutput"));
+	SetElementText(_T("btnSoft1"), _T("ReceiveAck"));
 }
 
 // CCOMHostDlg message handlers
@@ -200,9 +232,67 @@ HCURSOR CCOMHostDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+void CCOMHostDlg::OnTimer(UINT_PTR nIDEvent)
+{
+	if (nIDEvent == SEND_TIMEOUT)
+	{
+		KillTimer(SEND_TIMEOUT);
+		s_hrSend = NOERROR;
+		m_ddSendCommand.Invoke2((DISPID)0, &CComVariant(_T("timeout")), &CComVariant());
+		m_ddSendCommand.Release();
+	}
+
+	CDHtmlDialog::OnTimer(nIDEvent);
+}
+
+void CCOMHostDlg::OnClose()
+{
+#ifdef KRT2OUTPUT
+	if (INVALID_HANDLE_VALUE != m_hFileWrite)
+	{
+		::CloseHandle(m_hFileWrite);
+		m_hFileWrite = INVALID_HANDLE_VALUE;
+	}
+#endif
+
+	::CloseHandle(m_OverlappedWrite.hEvent);
+	m_OverlappedWrite.hEvent = INVALID_HANDLE_VALUE;
+
+	if (INVALID_HANDLE_VALUE != m_hReadThread)
+	{
+		// ::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread, 5000, FALSE);
+		CCOMHostDlg::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread);
+		::CloseHandle(m_hReadThread);
+	}
+
+	m_hReadThread = INVALID_HANDLE_VALUE;
+	::CloseHandle(m_ReadThreadArgs.hEvtTerminate);
+	m_ReadThreadArgs.hEvtTerminate = INVALID_HANDLE_VALUE;
+	::CloseHandle(m_ReadThreadArgs.hCOMPort);
+	m_ReadThreadArgs.hCOMPort = INVALID_HANDLE_VALUE;
+	::CloseHandle(m_ReadThreadArgs.hEvtCOMPort);
+	m_ReadThreadArgs.hEvtCOMPort = INVALID_HANDLE_VALUE;
+	m_ReadThreadArgs.hwndMainDlg = NULL;
+
+	CDHtmlDialog::OnClose();
+}
+
+/*
+* wir behandeln hier ZWEI unterschiedliche Ack
+* - wenn wir ein Command abgeschickt haben verarbeiten wir das Ack indem wir es an unser Script als SUCCEEDED antwort liefern
+* - wenn wir im IDLE zustand sind und ein PING ('S') empfangen schicken wir ein Ack zur bestaetigung an das KRT2
+*/
 LRESULT CCOMHostDlg::OnAck(WPARAM wParam, LPARAM lParam)
 {
-	sendCommand(CComBSTR(L"0x06"), NULL);
+	if (!m_ddSendCommand)
+		sendAck(); // im gegensatz zu sendCommand() verzweigen/stacken wir hier kein "Command"
+	else
+	{
+		s_hrSend = NOERROR;
+		CComDispatchDriver dd(m_ddSendCommand.Detach()); // wg. synchron
+		dd.Invoke2((DISPID)0, &CComVariant(/* VT_EMPTY */), &CComVariant(_T("automatic")));
+	}
+
 	return 0;
 }
 
@@ -309,6 +399,25 @@ HRESULT CCOMHostDlg::InitInputOutput(IHTMLElement*)
 	return NOERROR;
 }
 
+HRESULT CCOMHostDlg::ReceiveAck(IHTMLElement*)
+{
+	if (m_ddSendCommand)
+	{
+		KillTimer(SEND_TIMEOUT);
+		/*
+		* wir setzen ZUERST das s_hrSend (Flag) zurueck und DANN rufen wir, synchron, in den CallBack
+		* so kann der CallBack selbst wieder, synchron, sendCommandaufrufen
+		* wir brauchen dieses special fuer den recursiven javascript aufruf mit sendMultipleCommands
+		* das gleiche procedere mit dem m_ddSendCommand (nicht so schoen, vieleicht doch ueber ein Post verzoegern???)
+		*/
+		s_hrSend = NOERROR;
+		CComDispatchDriver dd(m_ddSendCommand.Detach());
+		m_ddSendCommand.Release();
+		dd.Invoke2((DISPID)0, &CComVariant(), &CComVariant(_T("manual")));
+	}
+	return NOERROR;
+}
+
 /*
 * das testfile ("krt2input.bin") enthaelt die folgenden UseCases:
 *  1.) 'R', 1.2.2 Set frequency & name on passive side, 126.900, PETER
@@ -322,11 +431,32 @@ HRESULT CCOMHostDlg::InitInputOutput(IHTMLElement*)
 *  9.) 'A', command sequence failure by 0x02 (stx)
 * 10.) 'O', 1.2.6 DUAL-mode on
 */
-void CCOMHostDlg::sendCommand(
+long CCOMHostDlg::sendCommand(
 	BSTR bstrCommand,
 	LPDISPATCH pCallback)
 {
-	ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::IDispatch::sendCommand(%ls)\n"), bstrCommand);
+	ATLTRACE2(atlTraceGeneral, 1, _T("CCOMHostDlg::IDispatch::sendCommand(%ls)\n"), bstrCommand);
+
+	/*
+	* wir muessen hier mindestens ZWEI faelle unterscheiden
+	* - unser commandParser ist nicht IDLE. d.H. wir sind noch damit beschaeftigt den input an den commandParser zu dispatchen
+	* - wir warten auf die bestaetigung eines bereits gesendeten commands (E_PENDING == m_hrSend)
+	*/
+	if (NOERROR != s_hrSend)
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("  reject send cause: wait for ACK from previous command\n"));
+		return E_PENDING;
+	}
+
+	if (IDLE != s_state)
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("  reject send cause: wait for completion of incomming command\n"));
+		return E_PENDING;
+	}
+
+	ATLTRACE2(atlTraceGeneral, 0, _T("  accept send, command: %ls\n"), bstrCommand);
+	_ASSERT(NULL != pCallback);
+	_ASSERT(NULL == m_ddSendCommand);
 
 #ifdef KRT2COMPORT
 	DCB dcb;
@@ -402,7 +532,8 @@ void CCOMHostDlg::sendCommand(
 		if (dwLastError != ERROR_IO_PENDING)
 		{
 			CCOMHostDlg::ShowLastError(_T("::WriteFile()"), &dwLastError);
-			return;
+			s_hrSend = NOERROR;
+			return dwLastError;
 		}
 
 		// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
@@ -433,9 +564,29 @@ void CCOMHostDlg::sendCommand(
 		CCOMHostDlg::ShowLastError(_T("::ClearCommError()"));
 #endif
 
+#if !defined(KRT2INPUT) && !defined(KRT2COMPORT)
 	/* handle execute callback wenn wir ein ack/nak empfangen
 	CComDispatchDriver dd(pCallback);
 	dd.Invoke0((DISPID) 0); */
+#endif
+
+	m_ddSendCommand = pCallback;
+	const UINT_PTR tSendTimeout = SetTimer(SEND_TIMEOUT, 5000, NULL);
+	_ASSERT(SEND_TIMEOUT == tSendTimeout); // in userem fall gibt es NUR EINE instance
+	s_hrSend = E_PENDING;
+	return NOERROR;
+}
+
+/*
+* im gegensatz zu einem NORMALEN command ist das VIEL einfacher
+* es wird einfach ein BYTE gesendet und es gibt KEINE bestaetigung.
+*/
+HRESULT CCOMHostDlg::sendAck()
+{
+	BYTE rgCommand[0x01] = { 0x06 };
+	DWORD dwNumBytesWritten = -1;
+	::WriteFile(m_ReadThreadArgs.hCOMPort, rgCommand, 1, &dwNumBytesWritten, NULL);
+	return NOERROR;
 }
 
 /*
@@ -460,38 +611,6 @@ void CCOMHostDlg::receiveCommand(
 
 		m_ddReceiveCommand = pCallback;
 	}
-}
-
-void CCOMHostDlg::OnClose()
-{
-#ifdef KRT2OUTPUT
-	if (INVALID_HANDLE_VALUE != m_hFileWrite)
-	{
-		::CloseHandle(m_hFileWrite);
-		m_hFileWrite = INVALID_HANDLE_VALUE;
-	}
-#endif
-
-	::CloseHandle(m_OverlappedWrite.hEvent);
-	m_OverlappedWrite.hEvent = INVALID_HANDLE_VALUE;
-
-	if (INVALID_HANDLE_VALUE != m_hReadThread)
-	{
-		// ::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread, 5000, FALSE);
-		CCOMHostDlg::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread);
-		::CloseHandle(m_hReadThread);
-	}
-
-	m_hReadThread = INVALID_HANDLE_VALUE;
-	::CloseHandle(m_ReadThreadArgs.hEvtTerminate);
-	m_ReadThreadArgs.hEvtTerminate = INVALID_HANDLE_VALUE;
-	::CloseHandle(m_ReadThreadArgs.hCOMPort);
-	m_ReadThreadArgs.hCOMPort = INVALID_HANDLE_VALUE;
-	::CloseHandle(m_ReadThreadArgs.hEvtCOMPort);
-	m_ReadThreadArgs.hEvtCOMPort = INVALID_HANDLE_VALUE;
-	m_ReadThreadArgs.hwndMainDlg = NULL;
-
-	CDHtmlDialog::OnClose();
 }
 
 /*static*/ DWORD CCOMHostDlg::SignalObjectAndWait(
@@ -543,24 +662,11 @@ void CCOMHostDlg::OnClose()
 	return HRESULT_FROM_WIN32(dwMessageId);
 }
 
-enum _KRT2StateMachine
-{
-	END,
-	IDLE,
-	WAIT_FOR_CMD,
-	WAIT_FOR_MHZ,
-	WAIT_FOR_kHZ,
-	WAIT_FOR_N0,
-	WAIT_FOR_N1,
-	WAIT_FOR_N2,
-	WAIT_FOR_N3,
-	WAIT_FOR_N4,
-	WAIT_FOR_N5,
-	WAIT_FOR_N6,
-	WAIT_FOR_N7,
-	WAIT_FOR_MNR,
-	WAIT_FOR_CHK
-} s_state = IDLE;
+/*
+* hier liegen die funktionen, variable die AUSSCHLIESSLICH vom COMReadThread genutzt werden
+* daher ist hier KEINE synchronisation noetig
+*/
+OVERLAPPED s_OverlappedRead;
 enum _KRT2StateMachine const* s_pCurrentCmd = NULL;
 unsigned int s_iIndexCmd = 1;
 /*static*/ unsigned int CCOMHostDlg::COMReadThread(void* arguments)
@@ -623,6 +729,7 @@ unsigned int s_iIndexCmd = 1;
 			else if (WAIT_OBJECT_0 + 2 == dwEvent)
 			{
 				ATLTRACE2(atlTraceGeneral, 1, _T("s_OverlappedRead.hEvent signaled\n"));
+				::ResetEvent(s_OverlappedRead.hEvent);
 
 				// GetOverlappedResult function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms683209(v=vs.85).aspx
 				DWORD dwNumberOfBytesRead = -1;
@@ -635,7 +742,6 @@ unsigned int s_iIndexCmd = 1;
 					break;
 				}
 
-				ATLTRACE2(atlTraceGeneral, 1, _T("  0x%.8x bytes received\n"), dwNumberOfBytesRead);
 #ifdef KRT2INPUT
 				/*
 				* A common mistake in overlapped I/O is to reuse an OVERLAPPED structure before the previous overlapped operation is completed.
@@ -650,13 +756,16 @@ unsigned int s_iIndexCmd = 1;
 				s_OverlappedRead.Offset += dwNumberOfBytesRead;
 #endif
 
-				ATLTRACE2(atlTraceGeneral, 1, _T("  process %hc\n"), rgCommand[0]);
 #ifdef DISPATCH_LOWLEVEL_BYTERECEIVE
 				::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
 #endif
 #ifdef DRIVE_COMMANDPARSER
 				CCOMHostDlg::DriveStateMachine(pArgs->hwndMainDlg, rgCommand[0], TRUE);
 #else
+				/*
+				* JEDES, einzelne, BYTE MUSS hier vorbei
+				* dennoch sehe ich beim pArgs->hCOMPort == COM (Type) offensichtlich nur einzelne BYTES???
+				*/
 				ATLTRACE2(atlTraceGeneral, 0, _T("dwNumberOfBytesRead: 0x%.8x, rgCommand[0]: %hc (Async)\n"), dwNumberOfBytesRead, rgCommand[0]);
 #endif
 
@@ -746,6 +855,23 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 	else
 		ATLTRACE2(atlTraceGeneral, 1, _T("  process result from synchronous read 0x%.8x\n"), byte);
 
+	if (E_PENDING == s_hrSend)
+	{
+		// DriveSend
+		s_hrSend = NOERROR; // send complete, return to receive mode
+		::PostMessage(hwndMainDlg, WM_USER_ACK, MAKEWPARAM(byte, 0), (LPARAM)NULL);
+	}
+	else
+		hr = CCOMHostDlg::DriveRead(hwndMainDlg, byte);
+
+	return hr;
+}
+
+/*static*/ HRESULT CCOMHostDlg::DriveRead(
+	HWND hwndMainDlg,
+	BYTE byte)
+{
+	HRESULT hr = S_FALSE;
 	switch (s_state)
 	{
 	case IDLE:

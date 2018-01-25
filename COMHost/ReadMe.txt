@@ -6,6 +6,7 @@ variante 1: (COMHost.exe) via COM Port,
 variante 2: (BTHost.exe) echter zugriff ueber die BT API
 
 History: (der letzte/neueste eintrag steht oben)
+- basis fuer ein Warten auf "Ack" mit dem Senden eines command
 - nur Handles die (as a file pointer mechanism), such as a file sind duerfen den Offset member hochzaehlen
 - SingleByte (Outgoing) Command 'C', C_CMD_FORMAT_JSON, Exchange of Frequencies (active against passive) implementiert
 - some sample Commands to transmit/send form builtin DebugGUI DualMode-On/Off
