@@ -5,29 +5,16 @@ variante 1: (COMHost.exe) via COM Port,
             dazu muss entweder eine physikalische Serielle vorhanden sein od. ein BT geraet als virtueller COM Port konfiguriert werden.
 variante 2: (BTHost.exe) echter zugriff ueber die BT API
 
-History: (der letzte/neueste eintrag steht oben)
-- basis fuer ein Warten auf "Ack" mit dem Senden eines command
-- nur Handles die (as a file pointer mechanism), such as a file sind duerfen den Offset member hochzaehlen
-- SingleByte (Outgoing) Command 'C', C_CMD_FORMAT_JSON, Exchange of Frequencies (active against passive) implementiert
-- some sample Commands to transmit/send form builtin DebugGUI DualMode-On/Off
-- die API des COMHost ist jetzt ueber window.external erreichbar
-- COMPorts koennen im gegensatz zu Files NICHT MEHRFACH eroeffnet werden
-- fluechtigkeits fehler in ShowLastError()
-- absturtz bei ShowLastError() behoben. MessageBox() bei Sharing violation
-- comunicate received Bytes/Commands to MainThread and GUI
-- extract values for command, rename first state to IDLE
-- die logik/structure der ReadFile loop MUSS in jedem fall Synchrones UND Asynchrones verhalten behandeln koennen
-- funktioniert ganz leidlich mit einem File base input ("krt2input.bin") offensichtlich funktioniert ein/dieser COM Port nicht mit OVERLAPPED
-- ShowLastError fuer CreateFile/WriteFile und ClearCommError wobei ich befuerchte mit einem ECHTEN COM Port gibt es keine Probleme
-- wir oeffnen den COM port nur EINMAL und speichern ihn als InstanceVariable so koennen wir MEHRERE commands abschicken
-- File Read (OVERLAPPED)
-- Command "R" fuer 1.3.3 Set passive frequency (MHz,KHz) & name, padding bytes fuer den Stationsnamen
-- der URL fuer die GUI ist ueber den ersten CommandLine Parameter konfigurierbar (EINFACHES Deployment)
-- ToDo: Commandos von COM Port lesen
-- ToDo: COM Port configurierbar, "COM2"
-- ToDo: Parameter fuer COM Port configurierbar, BaudRate
-- den hexcodierten und space delemitteten command string in ein ByteArray convertieren und an COM1 schreiben
-- _DEBUG Build, debuggen der MFC sourcen durch linken der MFC als static lib
-- mit DDX_DHtml_ElementInnerText() bzw. GetElementText() holen wir uns das zu sendende command aus dem DOM
-- mit m_strCurrentUrl navigieren wir zur initialen page via. http:// anstatt res://
-- mit FEATURE_BROWSER_EMULATION damit unser HTML GUI die noetigen HTML5/CSS features unterstuetzt
+Branches:
+  BTCom-OpenTCP-IOCompletion                      // hier werden wir den minimalistischen C/C++ ansatz weiterverfolgen
+  HighLevel-sendCommand                           // wir verfolgen eine 3 schichtige architektur, 
+master (Integrations Branch)
+  trial-ResetEvent-ClearOverlapped                // 2 Schicht architektur
+
+History/Ziele: (HighLevel-sendCommand)
+- das ist guter ansatz wiederspricht aber der idee hier ein komplexes JavaScript Projekt zu ueben
+
+History/Ziele: (trial-ResetEvent-ClearOverlapped)
+- in sende richtung werden an der schnittstelle ByteStreams uebergeben
+  weil der ByteStream untypisiert ist muss es fireAndForget UND sendCommand geben
+  in empfangs richtung werden (abstrakte) JSONCommands an die UI geliefert
