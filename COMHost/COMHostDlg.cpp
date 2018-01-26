@@ -431,6 +431,13 @@ HRESULT CCOMHostDlg::ReceiveAck(IHTMLElement*)
 *  8.) 'A', 0x0a, 0x03, 0x05, 1.2.3 set volume, squelch, intercom-VOX
 *  9.) 'A', command sequence failure by 0x02 (stx)
 * 10.) 'O', 1.2.6 DUAL-mode on
+*
+* sendCommand kennt ab jetzt ZWEI unterschiedliche verhalten
+* diese werden ueber den parameter pCallback gesteuert
+* 1.) wird auf caller seite ein callback uebergeben so wird
+*     eine statemachine getrieben die erst mit einem Ack/Nak/Timeout zurueckgesetzt wird.
+* 2.) wird auf caller seite KEIN callback uebergeben so wird
+*     KEINE statemachine verwendet.
 */
 long CCOMHostDlg::sendCommand(
 	BSTR bstrCommand,
@@ -455,8 +462,7 @@ long CCOMHostDlg::sendCommand(
 		return E_PENDING;
 	}
 
-	ATLTRACE2(atlTraceGeneral, 0, _T("  accept send, command: %ls\n"), bstrCommand);
-	_ASSERT(NULL != pCallback);
+	ATLTRACE2(atlTraceGeneral, 0, _T("  accept send, command: %ls, Callback: 0x%.8x\n"), bstrCommand, pCallback);
 	_ASSERT(NULL == m_ddSendCommand);
 
 #ifdef KRT2COMPORT
@@ -571,10 +577,16 @@ long CCOMHostDlg::sendCommand(
 	dd.Invoke0((DISPID) 0); */
 #endif
 
-	m_ddSendCommand = pCallback;
-	const UINT_PTR tSendTimeout = SetTimer(SEND_TIMEOUT, 5000, NULL);
-	_ASSERT(SEND_TIMEOUT == tSendTimeout); // in userem fall gibt es NUR EINE instance
-	s_hrSend = E_PENDING;
+	if (pCallback)
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("  requires Ack/Nak, support callback/timeout\n"));
+
+		m_ddSendCommand = pCallback;
+		const UINT_PTR tSendTimeout = SetTimer(SEND_TIMEOUT, 5000, NULL);
+		_ASSERT(SEND_TIMEOUT == tSendTimeout); // in userem fall gibt es NUR EINE instance
+		s_hrSend = E_PENDING;
+	}
+
 	return NOERROR;
 }
 
