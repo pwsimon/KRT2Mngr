@@ -6,12 +6,12 @@ variante 1: (COMHost.exe) via COM Port,
 variante 2: (BTHost.exe) echter zugriff ueber die BT API
 
 Branches:
-  BTCom-OpenTCP-IOCompletion                      // hier werden wir den minimalistischen C/C++ ansatz weiterverfolgen
+  JavaScript-CommandParser                        // hier werden wir den minimalistischen C/C++ ansatz weiterverfolgen
   HighLevel-sendCommand                           // wir verfolgen eine 3 schichtige architektur
 master (Integrations Branch)
   trial-ResetEvent-ClearOverlapped                // 2 Schicht architektur
 
-History: (BTCom-OpenTCP-IOCompletion)
+History: (JavaScript-CommandParser)
 - dieser BTHost stellt im gegensatz zum COMHost KEINEN CommandParse zur verfuegung
   deswegen ist die window.external schnittstelle vollkommen unterschiedlich
   in empfangsrichtung wird JEDES byte sofort (und ungefiltert) an function receiveByte(nByte) dispatched
