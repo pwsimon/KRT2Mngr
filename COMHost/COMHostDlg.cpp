@@ -47,6 +47,9 @@ END_MESSAGE_MAP()
 #define WM_USER_RXDECODEDCMD    (WM_USER + 3)
 
 #define SEND_TIMEOUT            100
+#define STX                     0x02
+#define ACK                     0x06
+#define NAK                     0x15
 
 /*
 * ueber diese statics wird mit dem GUI(Main)Thread kommuniziert der zugriff ist also zu sichern
@@ -87,6 +90,7 @@ END_MESSAGE_MAP()
 
 BEGIN_DISPATCH_MAP(CCOMHostDlg, CDHtmlDialog)
 	DISP_FUNCTION(CCOMHostDlg, "sendCommand", sendCommand, VT_I4, VTS_BSTR VTS_DISPATCH)
+	DISP_FUNCTION(CCOMHostDlg, "fireAndForget", fireAndForget, VT_I4, VTS_BSTR)
 	DISP_FUNCTION(CCOMHostDlg, "receiveCommand", receiveCommand, VT_EMPTY, VTS_DISPATCH)
 END_DISPATCH_MAP()
 
@@ -288,9 +292,13 @@ LRESULT CCOMHostDlg::OnAck(WPARAM wParam, LPARAM lParam)
 		sendAck(); // im gegensatz zu sendCommand() verzweigen/stacken wir hier kein "Command"
 	else
 	{
+		KillTimer(SEND_TIMEOUT);
 		s_hrSend = NOERROR;
 		CComDispatchDriver dd(m_ddSendCommand.Detach()); // wg. synchron
-		dd.Invoke2((DISPID)0, &CComVariant(/* VT_EMPTY */), &CComVariant(_T("automatic")));
+		if (NAK == LOWORD(wParam))
+			dd.Invoke2((DISPID)0, &CComVariant(_T("receive FAIL")), &CComVariant());
+		else
+			dd.Invoke2((DISPID)0, &CComVariant(/* VT_EMPTY */), &CComVariant(_T("receive SUCCEED")));
 	}
 
 	return 0;
@@ -413,7 +421,7 @@ HRESULT CCOMHostDlg::ReceiveAck(IHTMLElement*)
 		s_hrSend = NOERROR;
 		CComDispatchDriver dd(m_ddSendCommand.Detach());
 		m_ddSendCommand.Release();
-		dd.Invoke2((DISPID)0, &CComVariant(), &CComVariant(_T("manual")));
+		dd.Invoke2((DISPID)0, &CComVariant(), &CComVariant(_T("manual SUCCEED")));
 	}
 	return NOERROR;
 }
@@ -430,13 +438,16 @@ HRESULT CCOMHostDlg::ReceiveAck(IHTMLElement*)
 *  8.) 'A', 0x0a, 0x03, 0x05, 1.2.3 set volume, squelch, intercom-VOX
 *  9.) 'A', command sequence failure by 0x02 (stx)
 * 10.) 'O', 1.2.6 DUAL-mode on
+*
+* sendCommand kennt ab jetzt ZWEI unterschiedliche verhalten
+* diese werden ueber den parameter pCallback gesteuert
+* 1.) wird auf caller seite ein callback uebergeben so wird
+*     eine statemachine getrieben die erst mit einem Ack/Nak/Timeout zurueckgesetzt wird.
+* 2.) wird auf caller seite KEIN callback uebergeben so wird
+*     KEINE statemachine verwendet.
 */
-long CCOMHostDlg::sendCommand(
-	BSTR bstrCommand,
-	LPDISPATCH pCallback)
+long CCOMHostDlg::doSendCommand(BSTR bstrCommand)
 {
-	ATLTRACE2(atlTraceGeneral, 1, _T("CCOMHostDlg::IDispatch::sendCommand(%ls)\n"), bstrCommand);
-
 	/*
 	* wir muessen hier mindestens ZWEI faelle unterscheiden
 	* - unser commandParser ist nicht IDLE. d.H. wir sind noch damit beschaeftigt den input an den commandParser zu dispatchen
@@ -454,8 +465,6 @@ long CCOMHostDlg::sendCommand(
 		return E_PENDING;
 	}
 
-	ATLTRACE2(atlTraceGeneral, 0, _T("  accept send, command: %ls\n"), bstrCommand);
-	_ASSERT(NULL != pCallback);
 	_ASSERT(NULL == m_ddSendCommand);
 
 #ifdef KRT2COMPORT
@@ -564,17 +573,33 @@ long CCOMHostDlg::sendCommand(
 		CCOMHostDlg::ShowLastError(_T("::ClearCommError()"));
 #endif
 
-#if !defined(KRT2INPUT) && !defined(KRT2COMPORT)
-	/* handle execute callback wenn wir ein ack/nak empfangen
-	CComDispatchDriver dd(pCallback);
-	dd.Invoke0((DISPID) 0); */
-#endif
-
-	m_ddSendCommand = pCallback;
-	const UINT_PTR tSendTimeout = SetTimer(SEND_TIMEOUT, 5000, NULL);
-	_ASSERT(SEND_TIMEOUT == tSendTimeout); // in userem fall gibt es NUR EINE instance
-	s_hrSend = E_PENDING;
 	return NOERROR;
+}
+
+/*
+* diese wrapper existieren nur weil ich aus dem JavaScript keine window.external methode mit null aufrufen
+* kann die als VTS_DISPATCH declariert ist.
+*/
+long CCOMHostDlg::fireAndForget(BSTR bstrCommand)
+{
+	ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::IDispatch::fireAndForget(%ls)\n"), bstrCommand);
+	return doSendCommand(bstrCommand);
+}
+
+long CCOMHostDlg::sendCommand(BSTR bstrCommand, LPDISPATCH pCallback)
+{
+	ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::IDispatch::sendCommand(%ls)\n"), bstrCommand);
+	HRESULT hr = doSendCommand(bstrCommand);
+	if(SUCCEEDED(hr) && pCallback)
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("  requires Ack/Nak, support callback/timeout\n"));
+
+		m_ddSendCommand = pCallback;
+		const UINT_PTR tSendTimeout = SetTimer(SEND_TIMEOUT, 5000, NULL);
+		_ASSERT(SEND_TIMEOUT == tSendTimeout); // in userem fall gibt es NUR EINE instance
+		s_hrSend = E_PENDING;
+	}
+	return hr;
 }
 
 /*
@@ -882,7 +907,7 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 			break;
 		}
 
-		else if (0x02 == byte)
+		else if (STX == byte)
 		{
 			s_state = WAIT_FOR_CMD;
 			break;

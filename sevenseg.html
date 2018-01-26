@@ -155,6 +155,17 @@ function uploadToKRT2() {
 		// document.getElementById('command').innerText = '  wait for complete: ' + nIndex;
 	})();
 }
+var g_bDUALMode = false;
+function toggleDUALMode() {
+	var sDualModeOn = "0x02 0x4f", // Interface_Ext_V18.pdf(5), 1.3.7 DUAL-mode on
+		sDualModeOff = "0x02 0x6f", // Interface_Ext_V18.pdf(5), 1.3.8 DUAL-mode off
+		lAccept;
+
+	g_bDUALMode = !g_bDUALMode;
+	lAccept = window.external.fireAndForget(g_bDUALMode ? sDualModeOn : sDualModeOff);
+	if (lAccept)
+		document.getElementById('command').innerText = 'command rejected, buffer full/busy';
+}
 	</script>
 </head>
 
@@ -168,7 +179,7 @@ function uploadToKRT2() {
 			<img id="KRT2Panel" src="krt2old.png" usemap="#buttonmap">
 			<map name="buttonmap">
 				<area title="Power-On/Off" onclick="uploadToKRT2()" shape="rect" coords="86,30,142,82" />
-				<area title="toggle DUALMode" shape="rect" coords="153,34,202,81" />
+				<area title="toggle DUALMode" onclick="toggleDUALMode()" shape="rect" coords="153,34,202,81" />
 				<area title="AUD" shape="rect" coords="218,35,264,81" />
 				<area title="Memory" shape="rect" coords="97,275,144,323" />
 				<area title="switch" shape="rect" coords="162,276,202,318" />
