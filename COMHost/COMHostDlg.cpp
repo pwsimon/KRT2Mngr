@@ -87,6 +87,7 @@ END_MESSAGE_MAP()
 
 BEGIN_DISPATCH_MAP(CCOMHostDlg, CDHtmlDialog)
 	DISP_FUNCTION(CCOMHostDlg, "sendCommand", sendCommand, VT_I4, VTS_BSTR VTS_DISPATCH)
+	DISP_FUNCTION(CCOMHostDlg, "fireAndForget", fireAndForget, VT_I4, VTS_BSTR)
 	DISP_FUNCTION(CCOMHostDlg, "receiveCommand", receiveCommand, VT_EMPTY, VTS_DISPATCH)
 END_DISPATCH_MAP()
 
@@ -126,7 +127,7 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 	*     COMHost.cpp(44): CCOMHostApp::InitInstance()
 	*     HKEY_CURRENT_USER\SOFTWARE\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\COMHost.exe (REG_DWORD) 11000
 	*/
-	m_nHtmlResID = 0;
+	// m_nHtmlResID = 0;
 	// m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
 	m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
 	CCommandLineInfo cmdLI;
@@ -439,12 +440,8 @@ HRESULT CCOMHostDlg::ReceiveAck(IHTMLElement*)
 * 2.) wird auf caller seite KEIN callback uebergeben so wird
 *     KEINE statemachine verwendet.
 */
-long CCOMHostDlg::sendCommand(
-	BSTR bstrCommand,
-	LPDISPATCH pCallback)
+long CCOMHostDlg::doSendCommand(BSTR bstrCommand)
 {
-	ATLTRACE2(atlTraceGeneral, 1, _T("CCOMHostDlg::IDispatch::sendCommand(%ls)\n"), bstrCommand);
-
 	/*
 	* wir muessen hier mindestens ZWEI faelle unterscheiden
 	* - unser commandParser ist nicht IDLE. d.H. wir sind noch damit beschaeftigt den input an den commandParser zu dispatchen
@@ -462,7 +459,6 @@ long CCOMHostDlg::sendCommand(
 		return E_PENDING;
 	}
 
-	ATLTRACE2(atlTraceGeneral, 0, _T("  accept send, command: %ls, Callback: 0x%.8x\n"), bstrCommand, pCallback);
 	_ASSERT(NULL == m_ddSendCommand);
 
 #ifdef KRT2COMPORT
@@ -571,13 +567,24 @@ long CCOMHostDlg::sendCommand(
 		CCOMHostDlg::ShowLastError(_T("::ClearCommError()"));
 #endif
 
-#if !defined(KRT2INPUT) && !defined(KRT2COMPORT)
-	/* handle execute callback wenn wir ein ack/nak empfangen
-	CComDispatchDriver dd(pCallback);
-	dd.Invoke0((DISPID) 0); */
-#endif
+	return NOERROR;
+}
 
-	if (pCallback)
+/*
+* diese wrapper existieren nur weil ich aus dem JavaScript keine window.external methode mit null aufrufen
+* kann die als VTS_DISPATCH declariert ist.
+*/
+long CCOMHostDlg::fireAndForget(BSTR bstrCommand)
+{
+	ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::IDispatch::fireAndForget(%ls)\n"), bstrCommand);
+	return doSendCommand(bstrCommand);
+}
+
+long CCOMHostDlg::sendCommand(BSTR bstrCommand, LPDISPATCH pCallback)
+{
+	ATLTRACE2(atlTraceGeneral, 0, _T("CCOMHostDlg::IDispatch::sendCommand(%ls)\n"), bstrCommand);
+	HRESULT hr = doSendCommand(bstrCommand);
+	if(SUCCEEDED(hr) && pCallback)
 	{
 		ATLTRACE2(atlTraceGeneral, 0, _T("  requires Ack/Nak, support callback/timeout\n"));
 
@@ -586,8 +593,7 @@ long CCOMHostDlg::sendCommand(
 		_ASSERT(SEND_TIMEOUT == tSendTimeout); // in userem fall gibt es NUR EINE instance
 		s_hrSend = E_PENDING;
 	}
-
-	return NOERROR;
+	return hr;
 }
 
 /*

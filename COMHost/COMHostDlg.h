@@ -60,7 +60,9 @@ protected:
 	HRESULT sendAck();
 
 	DECLARE_DISPATCH_MAP()
+	long doSendCommand(BSTR bstrCommand);
 	long sendCommand(BSTR bstrCommand, LPDISPATCH spCallback);
+	long fireAndForget(BSTR bstrCommand);
 	CComDispatchDriver m_ddSendCommand;
 	void receiveCommand(LPDISPATCH pCallback);
 	CComBSTR m_bstrReceiveCommand;
