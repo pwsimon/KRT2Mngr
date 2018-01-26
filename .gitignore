@@ -12,3 +12,5 @@
 *.suo
 /BTHost/Debug
 /BTSample
+/COMHost/Release
+/COMHost/packages/cpprestsdk.v140.windesktop.msvcstl.dyn.rt-dyn.2.8.0
