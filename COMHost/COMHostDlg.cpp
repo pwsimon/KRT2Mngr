@@ -288,6 +288,7 @@ LRESULT CCOMHostDlg::OnAck(WPARAM wParam, LPARAM lParam)
 		sendAck(); // im gegensatz zu sendCommand() verzweigen/stacken wir hier kein "Command"
 	else
 	{
+		KillTimer(SEND_TIMEOUT);
 		s_hrSend = NOERROR;
 		CComDispatchDriver dd(m_ddSendCommand.Detach()); // wg. synchron
 		dd.Invoke2((DISPID)0, &CComVariant(/* VT_EMPTY */), &CComVariant(_T("automatic")));
