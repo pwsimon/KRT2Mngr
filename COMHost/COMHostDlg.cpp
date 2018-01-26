@@ -47,6 +47,9 @@ END_MESSAGE_MAP()
 #define WM_USER_RXDECODEDCMD    (WM_USER + 3)
 
 #define SEND_TIMEOUT            100
+#define STX                     0x02
+#define ACK                     0x06
+#define NAK                     0x15
 
 /*
 * ueber diese statics wird mit dem GUI(Main)Thread kommuniziert der zugriff ist also zu sichern
@@ -292,7 +295,10 @@ LRESULT CCOMHostDlg::OnAck(WPARAM wParam, LPARAM lParam)
 		KillTimer(SEND_TIMEOUT);
 		s_hrSend = NOERROR;
 		CComDispatchDriver dd(m_ddSendCommand.Detach()); // wg. synchron
-		dd.Invoke2((DISPID)0, &CComVariant(/* VT_EMPTY */), &CComVariant(_T("automatic")));
+		if (NAK == LOWORD(wParam))
+			dd.Invoke2((DISPID)0, &CComVariant(_T("receive FAIL")), &CComVariant());
+		else
+			dd.Invoke2((DISPID)0, &CComVariant(/* VT_EMPTY */), &CComVariant(_T("receive SUCCEED")));
 	}
 
 	return 0;
@@ -415,7 +421,7 @@ HRESULT CCOMHostDlg::ReceiveAck(IHTMLElement*)
 		s_hrSend = NOERROR;
 		CComDispatchDriver dd(m_ddSendCommand.Detach());
 		m_ddSendCommand.Release();
-		dd.Invoke2((DISPID)0, &CComVariant(), &CComVariant(_T("manual")));
+		dd.Invoke2((DISPID)0, &CComVariant(), &CComVariant(_T("manual SUCCEED")));
 	}
 	return NOERROR;
 }
@@ -901,7 +907,7 @@ const enum _KRT2StateMachine s_A123[6] =  { (enum _KRT2StateMachine)'A', WAIT_FO
 			break;
 		}
 
-		else if (0x02 == byte)
+		else if (STX == byte)
 		{
 			s_state = WAIT_FOR_CMD;
 			break;
