@@ -12,7 +12,7 @@ master (Integrations Branch)
   trial-ResetEvent-ClearOverlapped                // 2 Schicht architektur
 
 History: (JavaScript-CommandParser)
-- dieser BTHost stellt im gegensatz zum COMHost KEINEN CommandParse zur verfuegung
+- dieser BTHost stellt im gegensatz zum COMHost KEINEN CommandParser zur verfuegung
   deswegen ist die window.external schnittstelle vollkommen unterschiedlich
   in empfangsrichtung wird JEDES byte sofort (und ungefiltert) an function receiveByte(nByte) dispatched
   weiterhin verzichten wir auf ein aufwaendiges subcribe bzw. einen callback

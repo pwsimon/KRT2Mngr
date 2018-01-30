@@ -152,6 +152,19 @@ END_MESSAGE_MAP()
 
 void CBTHostDlg::OnClose()
 {
+#ifdef READ_THREAD
+	if (INVALID_HANDLE_VALUE != m_hReadThread)
+		::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread, 5000, FALSE);
+
+	m_hReadThread = INVALID_HANDLE_VALUE;
+	::CloseHandle(m_ReadThreadArgs.hEvtTerminate);
+	m_ReadThreadArgs.hEvtTerminate = INVALID_HANDLE_VALUE;
+	::closesocket(m_ReadThreadArgs.socketLocal);
+	m_ReadThreadArgs.socketLocal = SOCKET_ERROR;
+	m_ReadThreadArgs.hwndMainDlg = NULL;
+#else
+#endif
+
 	if (0 == m_iRetCWSAStartup)
 		::WSACleanup();
 
@@ -407,16 +420,28 @@ HRESULT CBTHostDlg::Connect(
 	* socket Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms740506(v=vs.85).aspx
 	* der call MUSS sicherstellen das die "addrServer" auch wirklich eine IPv4 (AF_INET) enthaelt
 	*/
-	SOCKET LocalSocket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (INVALID_SOCKET != LocalSocket)
+	SOCKET socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (INVALID_SOCKET != socketLocal)
 	{
-		if (INVALID_SOCKET != ::connect(LocalSocket, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
+		if (INVALID_SOCKET != ::connect(socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
 		{
 			char* szHeader = "GET " KRT2INPUT_PATH " HTTP/1.1\r\nHost: ws-psi.estos.de\r\n\r\n";
-			if (SOCKET_ERROR == ::send(LocalSocket, szHeader, strlen(szHeader), 0))
-				CBTHostDlg::ShowWSALastError(_T("::send(LocalSocket, ...)"));
+			if (SOCKET_ERROR == ::send(socketLocal, szHeader, strlen(szHeader), 0))
+				CBTHostDlg::ShowWSALastError(_T("::send(socketLocal, ...)"));
 
-#define IOCOMPLETION
+#ifdef READ_THREAD
+			m_ReadThreadArgs.hwndMainDlg = m_hWnd;
+			m_ReadThreadArgs.socketLocal = socketLocal;
+			m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
+			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
+
+#else
+			char buf[0x1000];
+			const int iByteCount = ::recv(socketLocal, buf, _countof(buf), 0);
+			ATLTRACE2(atlTraceGeneral, 0, _T("  number of bytes received: 0x%.8x\n"), iByteCount);
+#endif
+
+// #define IOCOMPLETION
 #ifdef IOCOMPLETION
 			// Make sure the RecvOverlapped struct is zeroed out
 			WSAOVERLAPPED RecvOverlapped;
@@ -431,7 +456,7 @@ HRESULT CBTHostDlg::Connect(
 			while (1)
 			{
 				int iLastError = 0;
-				int iRetC = ::WSARecv(LocalSocket, &readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &RecvOverlapped, NULL);
+				int iRetC = ::WSARecv(socketLocal, &readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &RecvOverlapped, NULL);
 				if ((iRetC == SOCKET_ERROR) && (WSA_IO_PENDING != (iLastError = ::WSAGetLastError())))
 				{
 					ATLTRACE2(atlTraceGeneral, 0, _T("::WSARecv() failed with error: 0x%.8x\n"), iLastError);
@@ -445,7 +470,7 @@ HRESULT CBTHostDlg::Connect(
 					break;
 				}
 
-				iRetC = ::WSAGetOverlappedResult(LocalSocket, &RecvOverlapped, &dwNumberOfBytesRecvd, FALSE, &dwFlags);
+				iRetC = ::WSAGetOverlappedResult(socketLocal, &RecvOverlapped, &dwNumberOfBytesRecvd, FALSE, &dwFlags);
 				if (FALSE == iRetC)
 				{
 					ATLTRACE2(atlTraceGeneral, 0, _T("::WSARecv() failed with error: 0x%.8x\n"), ::WSAGetLastError());
@@ -463,18 +488,18 @@ HRESULT CBTHostDlg::Connect(
 			::WSACloseEvent(RecvOverlapped.hEvent);
 
 #else
-			char buf[0x1000];
-			const int iByteCount = ::recv(LocalSocket, buf, _countof(buf), 0);
-			ATLTRACE2(atlTraceGeneral, 0, _T("  number of bytes received: 0x%.8x\n"), iByteCount);
 #endif
 		}
 		else
-			CBTHostDlg::ShowWSALastError(_T("::connect(LocalSocket, ...)"));
+			CBTHostDlg::ShowWSALastError(_T("::connect(socketLocal, ...)"));
 
-		if (SOCKET_ERROR == ::closesocket(LocalSocket))
+#ifdef READ_THREAD
+#else
+		if (SOCKET_ERROR == ::closesocket(socketLocal))
 			CBTHostDlg::ShowWSALastError(_T("::closesocket"));
+#endif
 
-		LocalSocket = INVALID_SOCKET;
+		socketLocal = INVALID_SOCKET;
 	}
 	return NOERROR;
 }
@@ -893,3 +918,17 @@ HRESULT CBTHostDlg::enumBTServices(
 	::MessageBox(NULL, strMsg, szCaption, MB_OK);
 	return NOERROR;
 }
+
+#ifdef READ_THREAD
+/*static*/ unsigned int CBTHostDlg::COMReadThread(void* arguments)
+{
+	struct _ReadThreadArg* pArgs = (struct _ReadThreadArg*) arguments;
+	_ASSERT(NULL != pArgs->hwndMainDlg);
+
+	char buf[0x1000];
+	const int iByteCount = ::recv(pArgs->socketLocal, buf, _countof(buf), 0);
+	ATLTRACE2(atlTraceGeneral, 0, _T("  number of bytes received: 0x%.8x\n"), iByteCount);
+
+	return 0;
+}
+#endif

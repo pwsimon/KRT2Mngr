@@ -31,6 +31,17 @@ protected:
 	virtual BOOL OnInitDialog();
 	virtual void OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl);
 
+#define READ_THREAD
+#ifdef READ_THREAD
+	struct _ReadThreadArg {
+		HWND hwndMainDlg;
+		SOCKET socketLocal;
+		HANDLE hEvtTerminate;
+	} m_ReadThreadArgs;
+	HANDLE m_hReadThread;
+	static unsigned int __stdcall COMReadThread(void* arguments);
+#endif
+
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
