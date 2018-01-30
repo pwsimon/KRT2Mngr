@@ -1,4 +1,3 @@
-
 // BTHost.cpp : Defines the class behaviors for the application.
 //
 
@@ -10,16 +9,15 @@
 #define new DEBUG_NEW
 #endif
 
-
 // CBTHostApp
-
 BEGIN_MESSAGE_MAP(CBTHostApp, CWinApp)
 	ON_COMMAND(ID_HELP, &CWinApp::OnHelp)
 END_MESSAGE_MAP()
 
+// The one and only CBTHostApp object
+CBTHostApp theApp;
 
 // CBTHostApp construction
-
 CBTHostApp::CBTHostApp()
 {
 	// support Restart Manager
@@ -29,14 +27,7 @@ CBTHostApp::CBTHostApp()
 	// Place all significant initialization in InitInstance
 }
 
-
-// The one and only CBTHostApp object
-
-CBTHostApp theApp;
-
-
 // CBTHostApp initialization
-
 BOOL CBTHostApp::InitInstance()
 {
 	// InitCommonControlsEx() is required on Windows XP if an application
@@ -104,3 +95,59 @@ BOOL CBTHostApp::InitInstance()
 	return FALSE;
 }
 
+#ifdef FEATURE_ALERTABLE_MESSAGE_LOOP
+/*virtual*/ BOOL CBTHostApp::PumpMessage()
+{
+	_AFX_THREAD_STATE* pState = AfxGetThreadState();
+
+	HANDLE rgAdditional[1];
+	// const DWORD dwWait = WAIT_OBJECT_0; // exact gleiches verhalten wie das orginal PumpMessage()
+	const DWORD dwWait = ::MsgWaitForMultipleObjectsEx(0, NULL, INFINITE, QS_ALLINPUT, MWMO_ALERTABLE); // irgendwas blokiert hier bzw. macht die sache zaeh
+	switch (dwWait)
+	{
+	case WAIT_OBJECT_0:
+	{
+		if (!::GetMessage(&(pState->m_msgCur), NULL, NULL, NULL))
+		{
+#ifdef _DEBUG
+			TRACE(traceAppMsg, 1, "CWinThread::PumpMessage - Received WM_QUIT.\n");
+			pState->m_nDisablePumpCount++; // application must die
+#endif
+										   // Note: prevents calling message loop things in 'ExitInstance'
+										   // will never be decremented
+			return FALSE;
+		}
+
+		// process this message
+		if (pState->m_msgCur.message != WM_KICKIDLE && !AfxPreTranslateMessage(&(pState->m_msgCur)))
+		{
+			::TranslateMessage(&(pState->m_msgCur));
+			::DispatchMessage(&(pState->m_msgCur));
+		}
+	}
+	break;
+	case WAIT_OBJECT_0 + 1:
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("WAIT_OBJECT_0 + 1\n"));
+	}
+	break;
+	case WAIT_IO_COMPLETION:
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("WAIT_IO_COMPLETION\n"));
+	}
+	break;
+	default:
+		break;
+	}
+
+	return TRUE;
+}
+
+#else
+/*virtual*/BOOL CBTHostApp::PumpMessage()
+{
+	ATLTRACE(atlTraceGeneral, 0, _T("CBTHostApp::PumpMessage()\n"));
+
+	return CWinApp::PumpMessage();
+}
+#endif

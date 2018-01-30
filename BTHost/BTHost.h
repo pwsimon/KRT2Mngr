@@ -18,11 +18,13 @@ public:
 
 // Overrides
 public:
+#ifdef FEATURE_ALERTABLE_MESSAGE_LOOP
 	virtual BOOL InitInstance();
+#endif
 
 // Implementation
-
 	DECLARE_MESSAGE_MAP()
+	virtual BOOL PumpMessage();
 };
 
 extern CBTHostApp theApp;
