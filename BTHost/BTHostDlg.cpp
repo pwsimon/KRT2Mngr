@@ -43,7 +43,7 @@ END_MESSAGE_MAP()
 
 // CBTHostDlg dialog
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
-	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnCheck) // soft buttons
+	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnSendPing) // soft buttons
 	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
 END_DHTML_EVENT_MAP()
 
@@ -68,7 +68,8 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	*/
 
 	m_addrSimulator.sin_family = AF_INET;
-	m_addrSimulator.sin_port = ::htons(80);
+	// BTSample\TCPEchoServer, https://msdn.microsoft.com/de-de/library/windows/desktop/ms737593(v=vs.85).aspx
+	m_addrSimulator.sin_port = ::htons(27015);
 	// m_addrSimulator.sin_addr.s_addr = ::inet_addr("127.0.0.1"); // stdafx.h(18) #define _WINSOCK_DEPRECATED_NO_WARNINGS or
 	switch (::InetPton(AF_INET, L"127.0.0.1", &m_addrSimulator.sin_addr)) // wir wollen explicit eine IPv4 addresse
 	{
@@ -80,6 +81,13 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 		::WSAGetLastError();
 		break;
 	}
+
+#ifdef READ_THREAD
+	m_ReadThreadArgs.hwndMainDlg = NULL;
+	m_ReadThreadArgs.socketLocal = INVALID_SOCKET;
+	m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
+	m_hReadThread = INVALID_HANDLE_VALUE;
+#endif
 }
 
 void CBTHostDlg::DoDataExchange(CDataExchange* pDX)
@@ -146,7 +154,7 @@ END_MESSAGE_MAP()
 	CDHtmlDialog::OnDocumentComplete(pDisp, szUrl);
 
 	// SetElementProperty(_T("btnSoft1"), DISPID_VALUE, &CComVariant(L"Check hurtz")); // for <input> elements
-	SetElementText(_T("btnSoft1"), _T("Check SPP"));
+	SetElementText(_T("btnSoft1"), _T("SendPing")); // _T("Check SPP")
 	SetElementText(_T("btnSoft2"), _T("Connect"));
 }
 
@@ -159,8 +167,10 @@ void CBTHostDlg::OnClose()
 	m_hReadThread = INVALID_HANDLE_VALUE;
 	::CloseHandle(m_ReadThreadArgs.hEvtTerminate);
 	m_ReadThreadArgs.hEvtTerminate = INVALID_HANDLE_VALUE;
+	_ASSERT(m_socketLocal == m_ReadThreadArgs.socketLocal);
 	::closesocket(m_ReadThreadArgs.socketLocal);
-	m_ReadThreadArgs.socketLocal = SOCKET_ERROR;
+	m_ReadThreadArgs.socketLocal = INVALID_SOCKET;
+	m_socketLocal = INVALID_SOCKET;
 	m_ReadThreadArgs.hwndMainDlg = NULL;
 #else
 #endif
@@ -225,6 +235,15 @@ HRESULT CBTHostDlg::OnCheck(IHTMLElement* /*pElement*/)
 	HANDLE hRadio = NULL;
 	hr = enumBTRadio(hRadio);
 	// hr = enumBTDevices(SerialPortServiceClass_UUID);
+
+	return S_OK;
+}
+
+HRESULT CBTHostDlg::OnSendPing(IHTMLElement* /*pElement*/)
+{
+	char* szHeader = "GET " KRT2INPUT_PATH " HTTP/1.1\r\nHost: ws-psi.estos.de\r\n\r\n";
+	if (SOCKET_ERROR == ::send(m_socketLocal, szHeader, strlen(szHeader), 0))
+		CBTHostDlg::ShowWSALastError(_T("::send(socketLocal, ...)"));
 
 	return S_OK;
 }
@@ -420,19 +439,15 @@ HRESULT CBTHostDlg::Connect(
 	* socket Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms740506(v=vs.85).aspx
 	* der call MUSS sicherstellen das die "addrServer" auch wirklich eine IPv4 (AF_INET) enthaelt
 	*/
-	SOCKET socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (INVALID_SOCKET != socketLocal)
+	m_socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (INVALID_SOCKET != m_socketLocal)
 	{
-		if (INVALID_SOCKET != ::connect(socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
+		if (INVALID_SOCKET != ::connect(m_socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
 		{
-			char* szHeader = "GET " KRT2INPUT_PATH " HTTP/1.1\r\nHost: ws-psi.estos.de\r\n\r\n";
-			if (SOCKET_ERROR == ::send(socketLocal, szHeader, strlen(szHeader), 0))
-				CBTHostDlg::ShowWSALastError(_T("::send(socketLocal, ...)"));
-
 #ifdef READ_THREAD
 			m_ReadThreadArgs.hwndMainDlg = m_hWnd;
-			m_ReadThreadArgs.socketLocal = socketLocal;
-			m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
+			m_ReadThreadArgs.socketLocal = m_socketLocal;
+			_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hEvtTerminate);
 			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
 
 #else
@@ -449,8 +464,6 @@ HRESULT CBTHostDlg::Connect(
 		if (SOCKET_ERROR == ::closesocket(socketLocal))
 			CBTHostDlg::ShowWSALastError(_T("::closesocket"));
 #endif
-
-		socketLocal = INVALID_SOCKET;
 	}
 	return NOERROR;
 }

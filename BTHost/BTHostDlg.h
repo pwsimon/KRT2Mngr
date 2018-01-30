@@ -50,9 +50,11 @@ protected:
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
 	HRESULT OnCheck(IHTMLElement *pElement);
+	HRESULT OnSendPing(IHTMLElement* /*pElement*/);
 	HRESULT OnConnect(IHTMLElement *pElement);
 
 private:
+	SOCKET m_socketLocal;
 	HRESULT enumBTRadio(HANDLE& hRadio);
 	HRESULT enumBTDevices(HANDLE hRadio);
 	HRESULT enumBTDevices(GUID serviceClass);
