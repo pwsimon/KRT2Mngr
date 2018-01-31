@@ -31,6 +31,8 @@ protected:
 	virtual BOOL OnInitDialog();
 	virtual void OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl);
 
+	STDMETHOD(TranslateAccelerator)(LPMSG lpMsg, const GUID *pguidCmdGroup, DWORD nCmdID);
+
 #define READ_THREAD
 #ifdef READ_THREAD
 	struct _ReadThreadArg {

@@ -69,7 +69,7 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 
 	m_addrSimulator.sin_family = AF_INET;
 	// BTSample\TCPEchoServer, https://msdn.microsoft.com/de-de/library/windows/desktop/ms737593(v=vs.85).aspx
-	m_addrSimulator.sin_port = ::htons(27015);
+	m_addrSimulator.sin_port = ::htons(KRT2INPUT_PORT);
 	// m_addrSimulator.sin_addr.s_addr = ::inet_addr("127.0.0.1"); // stdafx.h(18) #define _WINSOCK_DEPRECATED_NO_WARNINGS or
 	switch (::InetPton(AF_INET, L"127.0.0.1", &m_addrSimulator.sin_addr)) // wir wollen explicit eine IPv4 addresse
 	{
@@ -91,17 +91,16 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	m_socketLocal = INVALID_SOCKET;
 }
 
-void CBTHostDlg::DoDataExchange(CDataExchange* pDX)
-{
-	CDHtmlDialog::DoDataExchange(pDX);
-}
-
 BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
 	ON_WM_SYSCOMMAND()
 	ON_WM_CLOSE()
 END_MESSAGE_MAP()
 
-// CBTHostDlg message handlers
+/*virtual*/void CBTHostDlg::DoDataExchange(CDataExchange* pDX)
+{
+	CDHtmlDialog::DoDataExchange(pDX);
+}
+
 /*virtual*/ BOOL CBTHostDlg::OnInitDialog()
 {
 	/*
@@ -159,6 +158,39 @@ END_MESSAGE_MAP()
 	SetElementText(_T("btnSoft2"), _T("Connect"));
 }
 
+/*
+* ich haette es lieber als ON_WM_CHAR bearbeitet aber da liegt die CDHtmlDialog klasse dazwischen
+* und der handler wird nicht aufgerufen. auch ein zusaetzliches OnGetDlgCode() hilft nix.
+*/
+STDMETHODIMP CBTHostDlg::TranslateAccelerator(LPMSG lpMsg, const GUID *pguidCmdGroup, DWORD nCmdID)
+{
+#if (27015 == KRT2INPUT_PORT)
+	if (lpMsg->message == WM_CHAR)
+	{
+		const char ucBuffer[1] = { LOBYTE(LOWORD(lpMsg->wParam)) };
+		ATLTRACE2(atlTraceGeneral, 0, _T("SendChar: %hc\n"), *ucBuffer);
+		if (SOCKET_ERROR == ::send(m_socketLocal, ucBuffer, 1, 0))
+			CBTHostDlg::ShowWSALastError(_T("::send(socketLocal, ...)"));
+	}
+#endif
+
+	return __super::TranslateAccelerator(lpMsg, pguidCmdGroup, nCmdID);
+}
+
+// CBTHostDlg message handlers
+void CBTHostDlg::OnSysCommand(UINT nID, LPARAM lParam)
+{
+	if ((nID & 0xFFF0) == IDM_ABOUTBOX)
+	{
+		CAboutDlg dlgAbout;
+		dlgAbout.DoModal();
+	}
+	else
+	{
+		CDHtmlDialog::OnSysCommand(nID, lParam);
+	}
+}
+
 void CBTHostDlg::OnClose()
 {
 #ifdef READ_THREAD
@@ -181,19 +213,6 @@ void CBTHostDlg::OnClose()
 		::WSACleanup();
 
 	CDHtmlDialog::OnClose();
-}
-
-void CBTHostDlg::OnSysCommand(UINT nID, LPARAM lParam)
-{
-	if ((nID & 0xFFF0) == IDM_ABOUTBOX)
-	{
-		CAboutDlg dlgAbout;
-		dlgAbout.DoModal();
-	}
-	else
-	{
-		CDHtmlDialog::OnSysCommand(nID, lParam);
-	}
 }
 
 // If you add a minimize button to your dialog, you will need the code below
@@ -243,9 +262,11 @@ HRESULT CBTHostDlg::OnCheck(IHTMLElement* /*pElement*/)
 
 HRESULT CBTHostDlg::OnSendPing(IHTMLElement* /*pElement*/)
 {
+#ifdef KRT2INPUT_PATH
 	char* szHeader = "GET " KRT2INPUT_PATH " HTTP/1.1\r\nHost: ws-psi.estos.de\r\n\r\n";
 	if (SOCKET_ERROR == ::send(m_socketLocal, szHeader, strlen(szHeader), 0))
 		CBTHostDlg::ShowWSALastError(_T("::send(socketLocal, ...)"));
+#endif
 
 	return S_OK;
 }
@@ -909,7 +930,7 @@ HRESULT CBTHostDlg::enumBTServices(
 		const int iRetC = ::WSARecv(pArgs->socketLocal, &readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &RecvOverlapped, NULL);
 		if (0 == iRetC)
 		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received: 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
+			ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Sync): 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
 			// ::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
 		}
 
@@ -945,7 +966,7 @@ HRESULT CBTHostDlg::enumBTServices(
 						break;
 					}
 
-					ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received: 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
+					ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Async): 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
 					// ::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
 					::WSAResetEvent(RecvOverlapped.hEvent);
 

@@ -34,7 +34,8 @@
 #include <ws2bth.h>
 #include <ws2tcpip.h>
 #define KRT2INPUT_SERVER   _T("localhost")
-#define KRT2INPUT_PATH     "/krt2mngr/comhost/krt2input.bin"
+#define KRT2INPUT_PORT     27015 // 80, for use with simulator 27015
+// #define KRT2INPUT_PATH     "/krt2mngr/comhost/krt2input.bin"
 // #define KRT2INPUT_BT       _T("KRT21885") // 98:D3:31:FD:5A:F2
 #define FEATURE_ALERTABLE_MESSAGE_LOOP
 
