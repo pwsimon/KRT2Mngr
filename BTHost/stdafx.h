@@ -36,6 +36,7 @@
 #define KRT2INPUT_SERVER   _T("localhost")
 #define KRT2INPUT_PATH     "/krt2mngr/comhost/krt2input.bin"
 // #define KRT2INPUT_BT       _T("KRT21885") // 98:D3:31:FD:5A:F2
+#define FEATURE_ALERTABLE_MESSAGE_LOOP
 
 #ifdef _UNICODE
 #if defined _M_IX86

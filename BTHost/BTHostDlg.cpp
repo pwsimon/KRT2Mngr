@@ -43,7 +43,7 @@ END_MESSAGE_MAP()
 
 // CBTHostDlg dialog
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
-	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnCheck) // soft buttons
+	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnSendPing) // soft buttons
 	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
 END_DHTML_EVENT_MAP()
 
@@ -68,7 +68,8 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	*/
 
 	m_addrSimulator.sin_family = AF_INET;
-	m_addrSimulator.sin_port = ::htons(80);
+	// BTSample\TCPEchoServer, https://msdn.microsoft.com/de-de/library/windows/desktop/ms737593(v=vs.85).aspx
+	m_addrSimulator.sin_port = ::htons(27015);
 	// m_addrSimulator.sin_addr.s_addr = ::inet_addr("127.0.0.1"); // stdafx.h(18) #define _WINSOCK_DEPRECATED_NO_WARNINGS or
 	switch (::InetPton(AF_INET, L"127.0.0.1", &m_addrSimulator.sin_addr)) // wir wollen explicit eine IPv4 addresse
 	{
@@ -80,6 +81,13 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 		::WSAGetLastError();
 		break;
 	}
+
+#ifdef READ_THREAD
+	m_ReadThreadArgs.hwndMainDlg = NULL;
+	m_ReadThreadArgs.socketLocal = INVALID_SOCKET;
+	m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
+	m_hReadThread = INVALID_HANDLE_VALUE;
+#endif
 }
 
 void CBTHostDlg::DoDataExchange(CDataExchange* pDX)
@@ -146,12 +154,27 @@ END_MESSAGE_MAP()
 	CDHtmlDialog::OnDocumentComplete(pDisp, szUrl);
 
 	// SetElementProperty(_T("btnSoft1"), DISPID_VALUE, &CComVariant(L"Check hurtz")); // for <input> elements
-	SetElementText(_T("btnSoft1"), _T("Check SPP"));
+	SetElementText(_T("btnSoft1"), _T("SendPing")); // _T("Check SPP")
 	SetElementText(_T("btnSoft2"), _T("Connect"));
 }
 
 void CBTHostDlg::OnClose()
 {
+#ifdef READ_THREAD
+	if (INVALID_HANDLE_VALUE != m_hReadThread)
+		::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread, 5000, FALSE);
+
+	m_hReadThread = INVALID_HANDLE_VALUE;
+	::CloseHandle(m_ReadThreadArgs.hEvtTerminate);
+	m_ReadThreadArgs.hEvtTerminate = INVALID_HANDLE_VALUE;
+	_ASSERT(m_socketLocal == m_ReadThreadArgs.socketLocal);
+	::closesocket(m_ReadThreadArgs.socketLocal);
+	m_ReadThreadArgs.socketLocal = INVALID_SOCKET;
+	m_socketLocal = INVALID_SOCKET;
+	m_ReadThreadArgs.hwndMainDlg = NULL;
+#else
+#endif
+
 	if (0 == m_iRetCWSAStartup)
 		::WSACleanup();
 
@@ -212,6 +235,15 @@ HRESULT CBTHostDlg::OnCheck(IHTMLElement* /*pElement*/)
 	HANDLE hRadio = NULL;
 	hr = enumBTRadio(hRadio);
 	// hr = enumBTDevices(SerialPortServiceClass_UUID);
+
+	return S_OK;
+}
+
+HRESULT CBTHostDlg::OnSendPing(IHTMLElement* /*pElement*/)
+{
+	char* szHeader = "GET " KRT2INPUT_PATH " HTTP/1.1\r\nHost: ws-psi.estos.de\r\n\r\n";
+	if (SOCKET_ERROR == ::send(m_socketLocal, szHeader, strlen(szHeader), 0))
+		CBTHostDlg::ShowWSALastError(_T("::send(socketLocal, ...)"));
 
 	return S_OK;
 }
@@ -407,74 +439,31 @@ HRESULT CBTHostDlg::Connect(
 	* socket Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms740506(v=vs.85).aspx
 	* der call MUSS sicherstellen das die "addrServer" auch wirklich eine IPv4 (AF_INET) enthaelt
 	*/
-	SOCKET LocalSocket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (INVALID_SOCKET != LocalSocket)
+	m_socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (INVALID_SOCKET != m_socketLocal)
 	{
-		if (INVALID_SOCKET != ::connect(LocalSocket, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
+		if (INVALID_SOCKET != ::connect(m_socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
 		{
-			char* szHeader = "GET " KRT2INPUT_PATH " HTTP/1.1\r\nHost: ws-psi.estos.de\r\n\r\n";
-			if (SOCKET_ERROR == ::send(LocalSocket, szHeader, strlen(szHeader), 0))
-				CBTHostDlg::ShowWSALastError(_T("::send(LocalSocket, ...)"));
-
-#define IOCOMPLETION
-#ifdef IOCOMPLETION
-			// Make sure the RecvOverlapped struct is zeroed out
-			WSAOVERLAPPED RecvOverlapped;
-			SecureZeroMemory((PVOID)& RecvOverlapped, sizeof(WSAOVERLAPPED));
-			RecvOverlapped.hEvent = WSACreateEvent();
-
-			// WSARecv function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms741688(v=vs.85).aspx
-			char buf[0x1];
-			WSABUF readBuffer = { _countof(buf), buf };
-			DWORD dwNumberOfBytesRecvd = 0;
-			DWORD dwFlags = 0;
-			while (1)
-			{
-				int iLastError = 0;
-				int iRetC = ::WSARecv(LocalSocket, &readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &RecvOverlapped, NULL);
-				if ((iRetC == SOCKET_ERROR) && (WSA_IO_PENDING != (iLastError = ::WSAGetLastError())))
-				{
-					ATLTRACE2(atlTraceGeneral, 0, _T("::WSARecv() failed with error: 0x%.8x\n"), iLastError);
-					break;
-				}
-
-				iRetC = ::WSAWaitForMultipleEvents(1, &RecvOverlapped.hEvent, TRUE, INFINITE, TRUE);
-				if (WSA_WAIT_FAILED == iRetC)
-				{
-					ATLTRACE2(atlTraceGeneral, 0, _T("::WSAWaitForMultipleEvents() failed with error: 0x%.8x\n"), ::WSAGetLastError());
-					break;
-				}
-
-				iRetC = ::WSAGetOverlappedResult(LocalSocket, &RecvOverlapped, &dwNumberOfBytesRecvd, FALSE, &dwFlags);
-				if (FALSE == iRetC)
-				{
-					ATLTRACE2(atlTraceGeneral, 0, _T("::WSARecv() failed with error: 0x%.8x\n"), ::WSAGetLastError());
-					break;
-				}
-
-				ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received: 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
-
-				::WSAResetEvent(RecvOverlapped.hEvent);
-
-				// If 0 bytes are received, the connection was closed
-				if (0 == dwNumberOfBytesRecvd)
-					break;
-			}
-			::WSACloseEvent(RecvOverlapped.hEvent);
+#ifdef READ_THREAD
+			m_ReadThreadArgs.hwndMainDlg = m_hWnd;
+			m_ReadThreadArgs.socketLocal = m_socketLocal;
+			_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hEvtTerminate);
+			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
 
 #else
 			char buf[0x1000];
-			const int iByteCount = ::recv(LocalSocket, buf, _countof(buf), 0);
+			const int iByteCount = ::recv(socketLocal, buf, _countof(buf), 0);
 			ATLTRACE2(atlTraceGeneral, 0, _T("  number of bytes received: 0x%.8x\n"), iByteCount);
 #endif
 		}
 		else
-			CBTHostDlg::ShowWSALastError(_T("::connect(LocalSocket, ...)"));
+			CBTHostDlg::ShowWSALastError(_T("::connect(socketLocal, ...)"));
 
-		if (SOCKET_ERROR == ::closesocket(LocalSocket))
+#ifdef READ_THREAD
+#else
+		if (SOCKET_ERROR == ::closesocket(socketLocal))
 			CBTHostDlg::ShowWSALastError(_T("::closesocket"));
-
-		LocalSocket = INVALID_SOCKET;
+#endif
 	}
 	return NOERROR;
 }
@@ -893,3 +882,94 @@ HRESULT CBTHostDlg::enumBTServices(
 	::MessageBox(NULL, strMsg, szCaption, MB_OK);
 	return NOERROR;
 }
+
+#ifdef READ_THREAD
+/*static*/ unsigned int CBTHostDlg::COMReadThread(void* arguments)
+{
+	struct _ReadThreadArg* pArgs = (struct _ReadThreadArg*) arguments;
+	_ASSERT(NULL != pArgs->hwndMainDlg);
+
+#define IOCOMPLETION
+#ifdef IOCOMPLETION
+	// Make sure the RecvOverlapped struct is zeroed out
+	WSAOVERLAPPED RecvOverlapped;
+	SecureZeroMemory((PVOID)& RecvOverlapped, sizeof(WSAOVERLAPPED));
+	RecvOverlapped.hEvent = ::WSACreateEvent();
+
+	// WSARecv function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms741688(v=vs.85).aspx
+	char buf[0x1];
+	WSABUF readBuffer = { _countof(buf), buf };
+	DWORD dwNumberOfBytesRecvd = 0;
+	DWORD dwFlags = 0;
+	WSAEVENT rgWSAEvents[2] = { pArgs->hEvtTerminate, RecvOverlapped.hEvent };
+	while (1)
+	{
+		const int iRetC = ::WSARecv(pArgs->socketLocal, &readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &RecvOverlapped, NULL);
+		if (0 == iRetC)
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received: 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
+			// ::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
+		}
+
+		else
+		{
+			_ASSERT(SOCKET_ERROR == iRetC);
+			const int iLastError = ::WSAGetLastError();
+			if (WSA_IO_PENDING == iLastError)
+			{
+				const DWORD dwEvent = ::WSAWaitForMultipleEvents(_countof(rgWSAEvents), rgWSAEvents, TRUE, 10000, FALSE);
+				if (WSA_WAIT_FAILED == dwEvent)
+				{
+					ATLTRACE2(atlTraceGeneral, 0, _T("::WSAWaitForMultipleEvents() failed with error: 0x%.8x\n"), ::WSAGetLastError());
+					break;
+				}
+
+				else if (WSA_WAIT_TIMEOUT == dwEvent)
+				{
+					ATLTRACE2(atlTraceGeneral, 0, _T("run idle and continue loop\n"));
+				}
+
+				else if (WSA_WAIT_EVENT_0 == dwEvent)
+				{
+					ATLTRACE2(atlTraceGeneral, 0, _T("hEvtTerminate signaled, exit loop\n"));
+					break;
+				}
+
+				else if (WSA_WAIT_EVENT_0 + 1 == dwEvent)
+				{
+					if (FALSE == ::WSAGetOverlappedResult(pArgs->socketLocal, &RecvOverlapped, &dwNumberOfBytesRecvd, FALSE, &dwFlags))
+					{
+						ATLTRACE2(atlTraceGeneral, 0, _T("::WSAGetOverlappedResult() failed with error: 0x%.8x\n"), ::WSAGetLastError());
+						break;
+					}
+
+					ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received: 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
+					// ::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
+					::WSAResetEvent(RecvOverlapped.hEvent);
+
+					// If 0 bytes are received, the connection was closed
+					if (0 == dwNumberOfBytesRecvd)
+						break;
+				}
+
+				else
+				{
+					ATLTRACE2(atlTraceGeneral, 0, _T("ERROR: unknown result, break\n"));
+					break;
+				}
+			}
+			else
+			{
+				ATLTRACE2(atlTraceGeneral, 0, _T("::WSARecv() failed with error: 0x%.8x\n"), iLastError);
+				break;
+			}
+		}
+	}
+	::WSACloseEvent(RecvOverlapped.hEvent);
+#else
+#endif
+
+	ATLTRACE2(atlTraceGeneral, 0, _T("Leave COMReadThread()\n"));
+	return 0;
+}
+#endif

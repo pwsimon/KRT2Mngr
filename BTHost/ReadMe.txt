@@ -5,10 +5,16 @@ variante 1: (COMHost.exe) via COM Port,
             dazu muss entweder eine physikalische Serielle vorhanden sein od. ein BT geraet als virtueller COM Port konfiguriert werden.
 variante 2: (BTHost.exe) echter zugriff ueber die BT API
 
-History: (der letzte/neueste eintrag steht oben)
-- device inquiry for "KRT21885" to get BT Address probably (98:D3:31:FD:5A:F2)
-- open socket and write data to HardCoded BT Address: 98:D3:31:FD:5A:F2
-- SoftButtons im OnDocumentComplete() beschriften
-- ::WSAStartup/WSACleanup eingefuehrt, enumDevice (using bluetoothapis.h)
-- enum Devices/Services
-- enum Radio BluetoothFindFirstRadio
+Branches:
+  JavaScript-CommandParser                        // hier werden wir den minimalistischen C/C++ ansatz weiterverfolgen
+  HighLevel-sendCommand                           // wir verfolgen eine 3 schichtige architektur
+master (Integrations Branch)
+  trial-ResetEvent-ClearOverlapped                // 2 Schicht architektur
+
+History: (JavaScript-CommandParser)
+- dieser BTHost stellt im gegensatz zum COMHost KEINEN CommandParser zur verfuegung
+  deswegen ist die window.external schnittstelle vollkommen unterschiedlich
+  in empfangsrichtung wird JEDES byte sofort (und ungefiltert) an function receiveByte(nByte) dispatched
+  weiterhin verzichten wir auf ein aufwaendiges subcribe bzw. einen callback
+  in senderichtung uebergeben wir ein byteArray UND verzichten ebenfalls auf einen callback!
+  die empfaenger funktion ist also in der verantwortung das FAILED/SUCCEEDED fuer ein vohergehendes send zu extrahieren/bauen
