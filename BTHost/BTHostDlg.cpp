@@ -193,6 +193,8 @@ void CBTHostDlg::OnSysCommand(UINT nID, LPARAM lParam)
 
 void CBTHostDlg::OnClose()
 {
+	ATLTRACE2(atlTraceGeneral, 0, _T("Enter CBTHostDlg::OnClose()\n"));
+
 #ifdef READ_THREAD
 	if (INVALID_HANDLE_VALUE != m_hReadThread)
 		::SignalObjectAndWait(m_ReadThreadArgs.hEvtTerminate, m_hReadThread, 5000, FALSE);
@@ -213,6 +215,7 @@ void CBTHostDlg::OnClose()
 		::WSACleanup();
 
 	CDHtmlDialog::OnClose();
+	ATLTRACE2(atlTraceGeneral, 0, _T("Leave CBTHostDlg::OnClose()\n"));
 }
 
 // If you add a minimize button to your dialog, you will need the code below
@@ -461,12 +464,25 @@ HRESULT CBTHostDlg::Connect(
 	/*
 	* socket Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms740506(v=vs.85).aspx
 	* der call MUSS sicherstellen das die "addrServer" auch wirklich eine IPv4 (AF_INET) enthaelt
+	* SOCK_STREAM, A socket type that provides sequenced, reliable, two-way, connection-based byte streams with an OOB data transmission mechanism.
 	*/
 	m_socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (INVALID_SOCKET != m_socketLocal)
 	{
 		if (INVALID_SOCKET != ::connect(m_socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
 		{
+			/* const int iInRCVBUF = 1;
+			int setsockoptRetC = ::setsockopt(m_socketLocal, SOL_SOCKET, SO_RCVBUF, (const char*)&iInRCVBUF, sizeof(int));
+			if (SOCKET_ERROR == setsockoptRetC)
+				CBTHostDlg::ShowWSALastError(_T("::setsockopt(m_socketLocal, , SO_RCVBUF, ...)"));
+			else
+			{
+				int iOutRCVBUF = 0;
+				int iLen = sizeof(iOutRCVBUF);
+				int getsockoptRetC = ::getsockopt(m_socketLocal, SOL_SOCKET, SO_RCVBUF, (char*)&iOutRCVBUF, &iLen);
+				_ASSERT(iInRCVBUF == iOutRCVBUF);
+			} */
+
 #ifdef READ_THREAD
 			m_ReadThreadArgs.hwndMainDlg = m_hWnd;
 			m_ReadThreadArgs.socketLocal = m_socketLocal;
@@ -920,10 +936,10 @@ HRESULT CBTHostDlg::enumBTServices(
 	RecvOverlapped.hEvent = ::WSACreateEvent();
 
 	// WSARecv function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms741688(v=vs.85).aspx
-	char buf[0x1];
+	char buf[0x01];
 	WSABUF readBuffer = { _countof(buf), buf };
 	DWORD dwNumberOfBytesRecvd = 0;
-	DWORD dwFlags = 0;
+	DWORD dwFlags = 0; // MSG_PARTIAL, MSG_OOB
 	WSAEVENT rgWSAEvents[2] = { pArgs->hEvtTerminate, RecvOverlapped.hEvent };
 	while (1)
 	{
@@ -940,7 +956,7 @@ HRESULT CBTHostDlg::enumBTServices(
 			const int iLastError = ::WSAGetLastError();
 			if (WSA_IO_PENDING == iLastError)
 			{
-				const DWORD dwEvent = ::WSAWaitForMultipleEvents(_countof(rgWSAEvents), rgWSAEvents, TRUE, 10000, FALSE);
+				const DWORD dwEvent = ::WSAWaitForMultipleEvents(_countof(rgWSAEvents), rgWSAEvents, TRUE, 10000, FALSE); // WSA_INFINITE
 				if (WSA_WAIT_FAILED == dwEvent)
 				{
 					ATLTRACE2(atlTraceGeneral, 0, _T("::WSAWaitForMultipleEvents() failed with error: 0x%.8x\n"), ::WSAGetLastError());
@@ -989,7 +1005,14 @@ HRESULT CBTHostDlg::enumBTServices(
 		}
 	}
 	::WSACloseEvent(RecvOverlapped.hEvent);
+
 #else
+	while (1)
+	{
+		char buf[0x01];
+		const int iByteCount = ::recv(pArgs->socketLocal, buf, _countof(buf), 0);
+		ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Async): 0x%.8x, char: %hc\n"), iByteCount, *buf);
+	}
 #endif
 
 	ATLTRACE2(atlTraceGeneral, 0, _T("Leave COMReadThread()\n"));
