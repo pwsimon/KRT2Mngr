@@ -88,6 +88,7 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
 	m_hReadThread = INVALID_HANDLE_VALUE;
 #endif
+	m_socketLocal = INVALID_SOCKET;
 }
 
 void CBTHostDlg::DoDataExchange(CDataExchange* pDX)
@@ -168,12 +169,13 @@ void CBTHostDlg::OnClose()
 	::CloseHandle(m_ReadThreadArgs.hEvtTerminate);
 	m_ReadThreadArgs.hEvtTerminate = INVALID_HANDLE_VALUE;
 	_ASSERT(m_socketLocal == m_ReadThreadArgs.socketLocal);
-	::closesocket(m_ReadThreadArgs.socketLocal);
 	m_ReadThreadArgs.socketLocal = INVALID_SOCKET;
-	m_socketLocal = INVALID_SOCKET;
 	m_ReadThreadArgs.hwndMainDlg = NULL;
 #else
 #endif
+
+	::closesocket(m_socketLocal);
+	m_socketLocal = INVALID_SOCKET;
 
 	if (0 == m_iRetCWSAStartup)
 		::WSACleanup();

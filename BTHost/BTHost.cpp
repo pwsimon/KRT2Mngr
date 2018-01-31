@@ -113,8 +113,8 @@ BOOL CBTHostApp::InitInstance()
 			TRACE(traceAppMsg, 1, "CWinThread::PumpMessage - Received WM_QUIT.\n");
 			pState->m_nDisablePumpCount++; // application must die
 #endif
-										   // Note: prevents calling message loop things in 'ExitInstance'
-										   // will never be decremented
+			// Note: prevents calling message loop things in 'ExitInstance'
+			// will never be decremented
 			return FALSE;
 		}
 
