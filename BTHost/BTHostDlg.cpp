@@ -141,9 +141,15 @@ END_MESSAGE_MAP()
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
 	// TODO: Add extra initialization here
-	WSADATA data;
-	m_iRetCWSAStartup = ::WSAStartup(MAKEWORD(2, 2), &data);
-	if (0 != m_iRetCWSAStartup)
+	WORD wVersionRequested = MAKEWORD(2, 2);
+	// WORD wVersionRequested = MAKEWORD(1, 1); // for Overlapped Model
+	WSADATA wsaData;
+	m_iRetCWSAStartup = ::WSAStartup(wVersionRequested, &wsaData);
+	if (0 == m_iRetCWSAStartup)
+	{
+		_ASSERT(LOBYTE(wsaData.wVersion) == 2 || HIBYTE(wsaData.wVersion) == 2);
+	}
+	else
 		CBTHostDlg::ShowWSALastError(_T("WSAStartup"));
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
