@@ -18,7 +18,7 @@ public:
 
 // Overrides
 public:
-#ifdef FEATURE_ALERTABLE_MESSAGE_LOOP
+#ifdef IOALERTABLE
 	virtual BOOL InitInstance();
 #endif
 

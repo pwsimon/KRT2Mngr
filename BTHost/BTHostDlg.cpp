@@ -42,6 +42,10 @@ BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
 END_MESSAGE_MAP()
 
 // CBTHostDlg dialog
+#define WM_USER_ACK             (WM_USER + 1) // posted from COMReadThread
+#define WM_USER_RXSINGLEBYTE    (WM_USER + 2)
+#define WM_USER_RXDECODEDCMD    (WM_USER + 3)
+
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
 	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnSendPing) // soft buttons
 	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
@@ -50,6 +54,7 @@ END_DHTML_EVENT_MAP()
 CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	: CDHtmlDialog(IDD_BTHOST_DIALOG, IDR_HTML_BTHOST_DIALOG, pParent)
 {
+	m_dwThreadAffinity = ::GetCurrentThreadId();
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 	m_iRetCWSAStartup = -1;
 	m_addrKRT2 = {
@@ -94,6 +99,7 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
 	ON_WM_SYSCOMMAND()
 	ON_WM_CLOSE()
+	ON_MESSAGE(WM_USER_RXSINGLEBYTE, OnRXSingleByte)
 END_MESSAGE_MAP()
 
 /*virtual*/void CBTHostDlg::DoDataExchange(CDataExchange* pDX)
@@ -257,6 +263,13 @@ void CBTHostDlg::OnPaint()
 HCURSOR CBTHostDlg::OnQueryDragIcon()
 {
 	return static_cast<HCURSOR>(m_hIcon);
+}
+
+LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
+{
+	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() msg value: %hc, length: %hu\n"), LOWORD(wParam), HIWORD(wParam));
+	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() buf value: %hc\n"), *m_buf);
+	return 0;
 }
 
 HRESULT CBTHostDlg::OnCheck(IHTMLElement* /*pElement*/)
@@ -477,38 +490,36 @@ HRESULT CBTHostDlg::Connect(
 	{
 		if (INVALID_SOCKET != ::connect(m_socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
 		{
-			/* const int iInRCVBUF = 1;
-			int setsockoptRetC = ::setsockopt(m_socketLocal, SOL_SOCKET, SO_RCVBUF, (const char*)&iInRCVBUF, sizeof(int));
-			if (SOCKET_ERROR == setsockoptRetC)
-				CBTHostDlg::ShowWSALastError(_T("::setsockopt(m_socketLocal, , SO_RCVBUF, ...)"));
-			else
+			/*
+			* wir lesen IMMER nonblocking.
+			* entweder IOALERTABLE (OVERLAPPED_COMPLETION_ROUTINE) ODER
+			* READ_THREAD (GetOverlappedResult)
+			*/
+#ifdef IOALERTABLE
+			// Make sure the RecvOverlapped struct is zeroed out
+			SecureZeroMemory((PVOID)& m_RecvOverlappedCompletionRoutine, sizeof(WSAOVERLAPPED));
+
+			// WSARecv function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms741688(v=vs.85).aspx
+			m_readBuffer = { _countof(m_buf), m_buf };
+			DWORD dwNumberOfBytesRecvd = 0;
+			DWORD dwFlags = 0; // MSG_PARTIAL, MSG_OOB
+			const int iRetC = ::WSARecv(m_socketLocal, &m_readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &m_RecvOverlappedCompletionRoutine, CBTHostDlg::WorkerRoutine);
+			if (SOCKET_ERROR == iRetC)
 			{
-				int iOutRCVBUF = 0;
-				int iLen = sizeof(iOutRCVBUF);
-				int getsockoptRetC = ::getsockopt(m_socketLocal, SOL_SOCKET, SO_RCVBUF, (char*)&iOutRCVBUF, &iLen);
-				_ASSERT(iInRCVBUF == iOutRCVBUF);
-			} */
+				_ASSERT(WSA_IO_PENDING == ::WSAGetLastError());
+			}
+
+#endif
 
 #ifdef READ_THREAD
 			m_ReadThreadArgs.hwndMainDlg = m_hWnd;
 			m_ReadThreadArgs.socketLocal = m_socketLocal;
 			_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hEvtTerminate);
 			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
-
-#else
-			char buf[0x1000];
-			const int iByteCount = ::recv(socketLocal, buf, _countof(buf), 0);
-			ATLTRACE2(atlTraceGeneral, 0, _T("  number of bytes received: 0x%.8x\n"), iByteCount);
 #endif
 		}
 		else
-			CBTHostDlg::ShowWSALastError(_T("::connect(socketLocal, ...)"));
-
-#ifdef READ_THREAD
-#else
-		if (SOCKET_ERROR == ::closesocket(socketLocal))
-			CBTHostDlg::ShowWSALastError(_T("::closesocket"));
-#endif
+			CBTHostDlg::ShowWSALastError(_T("::connect(m_socketLocal, ...)"));
 	}
 	return NOERROR;
 }
@@ -934,8 +945,6 @@ HRESULT CBTHostDlg::enumBTServices(
 	struct _ReadThreadArg* pArgs = (struct _ReadThreadArg*) arguments;
 	_ASSERT(NULL != pArgs->hwndMainDlg);
 
-#define IOCOMPLETION
-#ifdef IOCOMPLETION
 	// Make sure the RecvOverlapped struct is zeroed out
 	WSAOVERLAPPED RecvOverlapped;
 	SecureZeroMemory((PVOID)& RecvOverlapped, sizeof(WSAOVERLAPPED));
@@ -1012,45 +1021,17 @@ HRESULT CBTHostDlg::enumBTServices(
 	}
 	::WSACloseEvent(RecvOverlapped.hEvent);
 
-#else
-	while (1)
-	{
-		char buf[0x01];
-		const int iByteCount = ::recv(pArgs->socketLocal, buf, _countof(buf), 0);
-		ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Async): 0x%.8x, char: %hc\n"), iByteCount, *buf);
-	}
-#endif
-
-#ifdef IOALERTABLE
-	// Make sure the RecvOverlapped struct is zeroed out
-	WSAOVERLAPPED RecvOverlapped;
-	SecureZeroMemory((PVOID)& RecvOverlapped, sizeof(WSAOVERLAPPED));
-	RecvOverlapped.hEvent = ::WSACreateEvent();
-
-	// WSARecv function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms741688(v=vs.85).aspx
-	char buf[0x01];
-	WSABUF readBuffer = { _countof(buf), buf };
-	DWORD dwNumberOfBytesRecvd = 0;
-	DWORD dwFlags = 0; // MSG_PARTIAL, MSG_OOB
-	WSAEVENT rgWSAEvents[2] = { pArgs->hEvtTerminate, RecvOverlapped.hEvent };
-	while (1)
-	{
-		const int iRetC = ::WSARecv(pArgs->socketLocal, &readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &RecvOverlapped, NULL);
-		if (0 == iRetC)
-		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Sync): 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
-			// ::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
-		}
-	}
-#endif
-
 	ATLTRACE2(atlTraceGeneral, 0, _T("Leave COMReadThread()\n"));
 	return 0;
 }
 #endif
 
 #ifdef IOALERTABLE
-/*static*/ void CALLBACK CBTHostDlg::WorkerRoutine(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags)
+/*static*/ void CALLBACK CBTHostDlg::WorkerRoutine(DWORD Error, DWORD dwBytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags)
 {
+	// _ASSERT(m_dwThreadAffinity == ::GetCurrentThreadId());
+
+	ATLTRACE2(atlTraceGeneral, 0, _T("CompletionRoutine() dwBytesTransferred: 0x%.8x, ::GetCurrentThreadId(): 0x%.8x\n"), dwBytesTransferred, ::GetCurrentThreadId());
+	AfxGetMainWnd()->PostMessage(WM_USER_RXSINGLEBYTE, MAKEWPARAM('S', dwBytesTransferred), NULL);
 }
 #endif

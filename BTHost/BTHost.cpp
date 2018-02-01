@@ -95,7 +95,7 @@ BOOL CBTHostApp::InitInstance()
 	return FALSE;
 }
 
-#ifdef FEATURE_ALERTABLE_MESSAGE_LOOP
+#ifdef IOALERTABLE
 /*virtual*/ BOOL CBTHostApp::PumpMessage()
 {
 	_AFX_THREAD_STATE* pState = AfxGetThreadState();
