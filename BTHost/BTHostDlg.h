@@ -43,6 +43,10 @@ protected:
 	HANDLE m_hReadThread;
 	static unsigned int __stdcall COMReadThread(void* arguments);
 #endif
+// #define IOALERTABLE
+#ifdef IOALERTABLE
+	static void CALLBACK CBTHostDlg::WorkerRoutine(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags);
+#endif
 
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();

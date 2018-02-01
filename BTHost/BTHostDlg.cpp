@@ -962,7 +962,7 @@ HRESULT CBTHostDlg::enumBTServices(
 			const int iLastError = ::WSAGetLastError();
 			if (WSA_IO_PENDING == iLastError)
 			{
-				const DWORD dwEvent = ::WSAWaitForMultipleEvents(_countof(rgWSAEvents), rgWSAEvents, TRUE, 10000, FALSE); // WSA_INFINITE
+				const DWORD dwEvent = ::WSAWaitForMultipleEvents(_countof(rgWSAEvents), rgWSAEvents, FALSE, 10000, FALSE); // WSA_INFINITE
 				if (WSA_WAIT_FAILED == dwEvent)
 				{
 					ATLTRACE2(atlTraceGeneral, 0, _T("::WSAWaitForMultipleEvents() failed with error: 0x%.8x\n"), ::WSAGetLastError());
@@ -1021,7 +1021,36 @@ HRESULT CBTHostDlg::enumBTServices(
 	}
 #endif
 
+#ifdef IOALERTABLE
+	// Make sure the RecvOverlapped struct is zeroed out
+	WSAOVERLAPPED RecvOverlapped;
+	SecureZeroMemory((PVOID)& RecvOverlapped, sizeof(WSAOVERLAPPED));
+	RecvOverlapped.hEvent = ::WSACreateEvent();
+
+	// WSARecv function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms741688(v=vs.85).aspx
+	char buf[0x01];
+	WSABUF readBuffer = { _countof(buf), buf };
+	DWORD dwNumberOfBytesRecvd = 0;
+	DWORD dwFlags = 0; // MSG_PARTIAL, MSG_OOB
+	WSAEVENT rgWSAEvents[2] = { pArgs->hEvtTerminate, RecvOverlapped.hEvent };
+	while (1)
+	{
+		const int iRetC = ::WSARecv(pArgs->socketLocal, &readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &RecvOverlapped, NULL);
+		if (0 == iRetC)
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Sync): 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
+			// ::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
+		}
+	}
+#endif
+
 	ATLTRACE2(atlTraceGeneral, 0, _T("Leave COMReadThread()\n"));
 	return 0;
+}
+#endif
+
+#ifdef IOALERTABLE
+/*static*/ void CALLBACK CBTHostDlg::WorkerRoutine(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags)
+{
 }
 #endif
