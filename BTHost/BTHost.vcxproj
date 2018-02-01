@@ -184,9 +184,6 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="BTHost.h" />
     <ClInclude Include="BTHostDlg.h" />
     <ClInclude Include="Resource.h" />
@@ -207,6 +204,7 @@
     <None Include="BTHost.htm">
       <DeploymentContent>true</DeploymentContent>
     </None>
+    <None Include="README.md" />
     <None Include="res\BTHost.rc2" />
   </ItemGroup>
   <ItemGroup>

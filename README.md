@@ -8,7 +8,7 @@ This is possible by communicating to KRT2 using it's builtin RS232 interface.
 
 ## this Project contains 2 alternative Applications/Hosts
 With COMHost we provide a Windows Application which uses a SerialPort to communicate with the connected KRT2.
-With BTHost we provide a Windows Application which uses a Bluetooth Name/Address to connect an KRT2 which have an Bluetooth to Serial adapter.
+With [BTHost](BTHost/README.md) we provide a Windows Application which uses a Bluetooth Name/Address to connect an KRT2 which have an Bluetooth to Serial adapter.
 
 ## roadmap (functional aspect, less important is at top)
 probably the BT Version is the more interesting thing cause most devices does not have COM interfaces anymore.
