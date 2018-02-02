@@ -8,12 +8,12 @@ This is possible by communicating to KRT2 using it's builtin RS232 interface.
 
 ## Bluetooth / SerialPort and a shared HTML/GUI
 with this Project we drive the two different aproaches to physical access the KRT2.
-even with approach wer'e using we need a _native_ windows application to access devices.
-- With COMHost we provide a Windows Application which uses a SerialPort to communicate with the connected KRT2.
+even which approach we're using we need a native windows application to access devices.
+- With [COMHost](COMHost/README.md) we provide a Windows Application which uses a SerialPort to communicate with the connected KRT2.
 - With [BTHost](BTHost/README.md) we provide a Windows Application which uses a Bluetooth Name/Address to connect an KRT2 which have an Bluetooth to Serial adapter.
 
 ## Development / Deployment and Publising
-every approach will be developed in its own Branch [BTHost](tree/BTCom-OpenTCP-IOCompletion) and [COMHost](tree/master).
+every approach will be developed in its own Branch [BTHost](../../tree/BTCom-OpenTCP-IOCompletion) and [COMHost](../../tree/master).
 finally we will integrate and maintain the _master_ Branch which contains both alternative Applications/Hosts which share the same GUI.
 
 - HighLevel-sendCommand _// (FeatureBranch) 3 layered architecture_
