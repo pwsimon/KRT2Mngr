@@ -20,6 +20,9 @@ public:
 
 // Implementation
 protected:
+#ifdef _DEBUG
+	DWORD m_dwThreadAffinity;
+#endif
 	HICON m_hIcon;
 	int m_iRetCWSAStartup;
 	SOCKADDR_BTH m_addrKRT2;
@@ -31,7 +34,9 @@ protected:
 	virtual BOOL OnInitDialog();
 	virtual void OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl);
 
-#define READ_THREAD
+	STDMETHOD(TranslateAccelerator)(LPMSG lpMsg, const GUID *pguidCmdGroup, DWORD nCmdID);
+
+// #define READ_THREAD
 #ifdef READ_THREAD
 	struct _ReadThreadArg {
 		HWND hwndMainDlg;
@@ -41,11 +46,18 @@ protected:
 	HANDLE m_hReadThread;
 	static unsigned int __stdcall COMReadThread(void* arguments);
 #endif
+#ifdef IOALERTABLE
+	WSAOVERLAPPED m_RecvOverlappedCompletionRoutine;
+	char m_buf[0x01];
+	WSABUF m_readBuffer;
+	static void CALLBACK CBTHostDlg::WorkerRoutine(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags);
+#endif
 
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
 	afx_msg void OnClose();
+	afx_msg LRESULT OnRXSingleByte(WPARAM wParam, LPARAM lParam);
 
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
