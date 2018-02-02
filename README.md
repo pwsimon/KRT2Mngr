@@ -13,7 +13,7 @@ even which approach we're using we need a native windows application to access d
 - With [BTHost](BTHost/README.md) we provide a Windows Application which uses a Bluetooth Name/Address to connect an KRT2 which have an Bluetooth to Serial adapter.
 
 ## Development / Deployment and Publising
-every approach will be developed in its own Branch [BTHost](../../tree/BTCom-OpenTCP-IOCompletion) and [COMHost](../../tree/master).
+every approach will be developed in its own Branch [BTHost](../../tree/BTCom) and [COMHost](../../tree/master).
 finally we will integrate and maintain the _master_ Branch which contains both alternative Applications/Hosts which share the same GUI.
 
 - HighLevel-sendCommand _// (FeatureBranch) 3 layered architecture_

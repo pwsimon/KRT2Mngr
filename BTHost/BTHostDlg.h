@@ -67,6 +67,7 @@ protected:
 
 private:
 	SOCKET m_socketLocal;
+	CComDispatchDriver m_ddScript;
 	HRESULT enumBTRadio(HANDLE& hRadio);
 	HRESULT enumBTDevices(HANDLE hRadio);
 	HRESULT enumBTDevices(GUID serviceClass);

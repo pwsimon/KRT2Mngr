@@ -1,20 +1,25 @@
 <HTML>
+
 <HEAD>
+	<script type="text/javascript">
+function OnRXSingleByte(nByte) {
+	document.getElementById('lblCommand').innerText = String.fromCharCode(nByte);
+}
+	</script>
 </HEAD>
+
 <BODY ID=CBTHostDlg BGCOLOR=LIGHTGREY style="font-family:MS Shell Dlg;font-size:8">
 
 <TABLE WIDTH=100% HEIGHT=100%>
-<TR WIDTH=100% HEIGHT=45%>
-<TD ALIGN=CENTER VALIGN=BOTTOM>
-TODO: Place controls here.
-</TD>
-</TR>
-<TR WIDTH=100% HEIGHT=100%>
-<TD ALIGN=RIGHT VALIGN=BOTTOM>
-	<BUTTON STYLE="WIDTH:100" ID="btnSoft1">undefined</BUTTON>&nbsp;
-	<BUTTON STYLE="WIDTH:100" ID="btnSoft2">undefined</BUTTON>
-</TD>
-</TR>
+	<TR WIDTH=100% HEIGHT=45%>
+		<TD ID="lblCommand" ALIGN=CENTER VALIGN=BOTTOM>0x53</TD>
+	</TR>
+	<TR WIDTH=100% HEIGHT=100%>
+		<TD ALIGN=RIGHT VALIGN=BOTTOM>
+			<BUTTON ID="btnSoft1">undefined</BUTTON>&nbsp;
+			<BUTTON ID="btnSoft2">undefined</BUTTON>
+		</TD>
+	</TR>
 </TABLE>
 
 </BODY>

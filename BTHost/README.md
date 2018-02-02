@@ -22,7 +22,7 @@ handles uninterpreted/raw bytes
 ## basic protocol (window.external/ISerial)
 - CommandInterpreter handles checksum generation on outgoing commands and checksum verification on incomming commands
 - handles KeepAlive/Ping outgoing and incomming
-- ISerial::OnRXSingleByte()
+- ISerial::OnRXSingleByte(nByte)
 
 ## HTML/GUI
 handles functional, JSON-Encoded, commands with have no information about checksum or Ack/Nak

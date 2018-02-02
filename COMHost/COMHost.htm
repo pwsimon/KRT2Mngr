@@ -5,7 +5,7 @@
 /*
 * weil das aktuell mit res:// geladen wird haben wir documentMode: 5, da geht kein addEventListener
 window.onload = function () {
-	document.getElementById("btnSendSingle").addEventListener("click", sendSingleCommand);
+	document.getElementById("btnSoft1").addEventListener("click", sendSingleCommand);
 } */
 function sendSingleCommand() {
 	/*
@@ -81,18 +81,18 @@ function receiveCommand() {
 <BODY ID=CCOMHostDlg BGCOLOR=LIGHTGREY style="font-family:MS Shell Dlg;font-size:8">
 
 <TABLE WIDTH=100% HEIGHT=100%>
-<TR WIDTH=100% HEIGHT=45%>
-<TD ID="command" ALIGN=CENTER VALIGN=BOTTOM>0x53</TD>
-</TR>
-<TR WIDTH=100% HEIGHT=100%>
-<TD ALIGN=RIGHT VALIGN=BOTTOM>
-<BUTTON ID="btnSoft1">undefined</BUTTON>&nbsp;
-<BUTTON ID="btnSendSingle" onclick="sendSingleCommand()">SendSingle</BUTTON>&nbsp;
-<BUTTON onclick="sendMultipleCommands()">SendMultiple</BUTTON>&nbsp;
-<BUTTON onclick="fireAndForget()">fireAndForget</BUTTON>&nbsp;
-<BUTTON onclick="receiveCommand()">Read</BUTTON>
-</TD>
-</TR>
+	<TR WIDTH=100% HEIGHT=45%>
+		<TD ID="command" ALIGN=CENTER VALIGN=BOTTOM>0x53</TD>
+	</TR>
+	<TR WIDTH=100% HEIGHT=100%>
+		<TD ALIGN=RIGHT VALIGN=BOTTOM>
+			<BUTTON ID="btnSoft1">undefined</BUTTON>&nbsp;
+			<BUTTON onclick="sendSingleCommand()">SendSingle</BUTTON>&nbsp;
+			<BUTTON onclick="sendMultipleCommands()">SendMultiple</BUTTON>&nbsp;
+			<BUTTON onclick="fireAndForget()">fireAndForget</BUTTON>&nbsp;
+			<BUTTON onclick="receiveCommand()">Read</BUTTON>
+		</TD>
+	</TR>
 </TABLE>
 
 </BODY>

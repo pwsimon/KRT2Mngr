@@ -54,7 +54,9 @@ END_DHTML_EVENT_MAP()
 CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	: CDHtmlDialog(IDD_BTHOST_DIALOG, IDR_HTML_BTHOST_DIALOG, pParent)
 {
+#ifdef _DEBUG
 	m_dwThreadAffinity = ::GetCurrentThreadId();
+#endif
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 	m_iRetCWSAStartup = -1;
 	m_addrKRT2 = {
@@ -165,6 +167,8 @@ END_MESSAGE_MAP()
 {
 	CDHtmlDialog::OnDocumentComplete(pDisp, szUrl);
 
+	m_spHtmlDoc->get_Script(&m_ddScript.p);
+
 	// SetElementProperty(_T("btnSoft1"), DISPID_VALUE, &CComVariant(L"Check hurtz")); // for <input> elements
 	SetElementText(_T("btnSoft1"), _T("SendPing")); // _T("Check SPP")
 	SetElementText(_T("btnSoft2"), _T("Connect"));
@@ -267,8 +271,10 @@ HCURSOR CBTHostDlg::OnQueryDragIcon()
 
 LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 {
+	_ASSERT(m_dwThreadAffinity == ::GetCurrentThreadId());
 	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() msg value: %hc, length: %hu\n"), LOWORD(wParam), HIWORD(wParam));
 	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() buf value: %hc\n"), *m_buf);
+	m_ddScript.Invoke1(_T("OnRXSingleByte"), &CComVariant(*m_buf));
 	return 0;
 }
 
