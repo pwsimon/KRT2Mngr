@@ -303,7 +303,14 @@ HRESULT CBTHostDlg::OnSendPing(IHTMLElement* /*pElement*/)
 #ifdef KRT2INPUT_PATH
 	char* szHeader = "GET " KRT2INPUT_PATH " HTTP/1.1\r\nHost: ws-psi.estos.de\r\n\r\n";
 	if (SOCKET_ERROR == ::send(m_socketLocal, szHeader, strlen(szHeader), 0))
-		CBTHostDlg::ShowWSALastError(_T("::send(socketLocal, ...)"));
+		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
+#endif
+
+#ifdef KRT2INPUT_BT
+#define O_COMMAND_LEN   0x02
+	char rgData[O_COMMAND_LEN] = { STX, 'O' }; // 1.2.6 DUAL-mode on
+	if (SOCKET_ERROR == ::send(m_socketLocal, rgData, _countof(rgData), 0))
+		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
 #endif
 
 	return S_OK;
@@ -400,36 +407,26 @@ HRESULT CBTHostDlg::enumBTDevices(HANDLE hRadio)
 	return NOERROR;
 }
 
-#define TESTDATA_LENGTH   0x02
 HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 {
-	char* pszData = (char*) ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, TESTDATA_LENGTH);
-	pszData[0] = STX;
-	pszData[1] = 'O'; // 1.2.6 DUAL-mode on
-
-	SOCKET LocalSocket = ::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
-	if (INVALID_SOCKET != LocalSocket)
+	m_socketLocal = ::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
+	if (INVALID_SOCKET != m_socketLocal)
 	{
-		if (INVALID_SOCKET != ::connect(LocalSocket, (struct sockaddr *) pRemoteAddr, sizeof(SOCKADDR_BTH)))
+		if (INVALID_SOCKET != ::connect(m_socketLocal, (struct sockaddr *) pRemoteAddr, sizeof(SOCKADDR_BTH)))
 		{
-			if (SOCKET_ERROR == ::send(LocalSocket, (char*)pszData, (int)TESTDATA_LENGTH, 0))
-				CBTHostDlg::ShowWSALastError(_T("::send(LocalSocket, ...)"));
+			/*
+			* wir lesen IMMER nonblocking.
+			* entweder IOALERTABLE (OVERLAPPED_COMPLETION_ROUTINE) ODER
+			* READ_THREAD (GetOverlappedResult)
+			*/
+#ifdef IOALERTABLE
+#endif
 		}
 		else
-			CBTHostDlg::ShowWSALastError(_T("::connect(LocalSocket, ...)"));
-
-		if (SOCKET_ERROR == ::closesocket(LocalSocket))
-			CBTHostDlg::ShowWSALastError(_T("::closesocket"));
-
-		LocalSocket = INVALID_SOCKET;
+			CBTHostDlg::ShowWSALastError(_T("::connect(m_socketLocal, ...)"));
 	}
 	else
 		CBTHostDlg::ShowWSALastError(_T("::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM)"));
-
-	if (NULL != pszData) {
-		::HeapFree(::GetProcessHeap(), 0, pszData);
-		pszData = NULL;
-	}
 
 	return NOERROR;
 }
@@ -538,6 +535,9 @@ HRESULT CBTHostDlg::Connect(
 		else
 			CBTHostDlg::ShowWSALastError(_T("::connect(m_socketLocal, ...)"));
 	}
+	else
+		CBTHostDlg::ShowWSALastError(_T("::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)"));
+
 	return NOERROR;
 }
 
