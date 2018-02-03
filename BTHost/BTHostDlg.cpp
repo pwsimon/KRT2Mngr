@@ -46,6 +46,11 @@ END_MESSAGE_MAP()
 #define WM_USER_RXSINGLEBYTE    (WM_USER + 2)
 #define WM_USER_RXDECODEDCMD    (WM_USER + 3)
 
+#define SEND_TIMEOUT            100
+#define STX                     0x02
+#define ACK                     0x06
+#define NAK                     0x15
+
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
 	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnSendPing) // soft buttons
 	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
@@ -65,15 +70,19 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 		CLSID_NULL, // GUID serviceClassId;
 		0UL // ULONG port;
 	};
+
+#ifdef KRT2INPUT_BT
 	/*
 	* Setting address family to AF_BTH indicates winsock2 to use Bluetooth sockets
 	* Port should be set to 0 if ServiceClassId is specified.
+	*/
 	m_addrKRT2.addressFamily = AF_BTH;
 	m_addrKRT2.btAddr = ((ULONGLONG)0x000098d331fd5af2); // KRT21885, Dev B => (98:D3:31:FD:5A:F2)
 	m_addrKRT2.serviceClassId = CLSID_NULL; // SerialPortServiceClass_UUID
 	m_addrKRT2.port = 1UL;
-	*/
+#endif
 
+#ifdef KRT2INPUT_PORT
 	m_addrSimulator.sin_family = AF_INET;
 	// BTSample\TCPEchoServer, https://msdn.microsoft.com/de-de/library/windows/desktop/ms737593(v=vs.85).aspx
 	m_addrSimulator.sin_port = ::htons(KRT2INPUT_PORT);
@@ -88,6 +97,7 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 		::WSAGetLastError();
 		break;
 	}
+#endif
 
 #ifdef READ_THREAD
 	m_ReadThreadArgs.hwndMainDlg = NULL;
@@ -390,17 +400,17 @@ HRESULT CBTHostDlg::enumBTDevices(HANDLE hRadio)
 	return NOERROR;
 }
 
-#define TESTDATA_LENGTH   0x0a
+#define TESTDATA_LENGTH   0x02
 HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 {
-	char* pszData = (char*) ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, TESTDATA_LENGTH + 1);
-	memcpy_s(pszData, 0x0a, "here we go", 0x0a);
+	char* pszData = (char*) ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, TESTDATA_LENGTH);
+	pszData[0] = STX;
+	pszData[1] = 'O'; // 1.2.6 DUAL-mode on
 
 	SOCKET LocalSocket = ::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
 	if (INVALID_SOCKET != LocalSocket)
 	{
-		SOCKET socketKRT2 = ::connect(LocalSocket, (struct sockaddr *) pRemoteAddr, sizeof(SOCKADDR_BTH));
-		if (INVALID_SOCKET != socketKRT2)
+		if (INVALID_SOCKET != ::connect(LocalSocket, (struct sockaddr *) pRemoteAddr, sizeof(SOCKADDR_BTH)))
 		{
 			if (SOCKET_ERROR == ::send(LocalSocket, (char*)pszData, (int)TESTDATA_LENGTH, 0))
 				CBTHostDlg::ShowWSALastError(_T("::send(LocalSocket, ...)"));
@@ -420,7 +430,8 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 		::HeapFree(::GetProcessHeap(), 0, pszData);
 		pszData = NULL;
 	}
-	return E_FAIL;
+
+	return NOERROR;
 }
 
 /*
@@ -826,10 +837,10 @@ HRESULT CBTHostDlg::enumBTServices(
 				}
 				else {
 					hrResult = ::WSAGetLastError();
-					if (WSA_E_NO_MORE == hrResult) { //No more data 
-													// 
-													// No more devices found.  Exit the lookup. 
-													// 
+					if (WSA_E_NO_MORE == hrResult)
+					{
+						// No more data 
+						// No more devices found.  Exit the lookup. 
 						bContinueLookup = FALSE;
 					}
 					else if (WSAEFAULT == hrResult) {
