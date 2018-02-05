@@ -100,7 +100,6 @@ BOOL CBTHostApp::InitInstance()
 {
 	_AFX_THREAD_STATE* pState = AfxGetThreadState();
 
-	HANDLE rgAdditional[1];
 	// const DWORD dwWait = WAIT_OBJECT_0; // exact gleiches verhalten wie das orginal PumpMessage()
 	const DWORD dwWait = ::MsgWaitForMultipleObjectsEx(0, NULL, INFINITE, QS_ALLINPUT, MWMO_ALERTABLE); // irgendwas blokiert hier bzw. macht die sache zaeh
 	switch (dwWait)
