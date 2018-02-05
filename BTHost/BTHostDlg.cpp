@@ -60,9 +60,20 @@ END_MESSAGE_MAP()
 /*static*/ SOCKET CBTHostDlg::m_socketLocal = INVALID_SOCKET;
 
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
-	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnSendPing) // soft buttons
+	// DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnSendPing) // soft buttons
+	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnDiscover)
 	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
 END_DHTML_EVENT_MAP()
+
+BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
+	ON_WM_SYSCOMMAND()
+	ON_WM_CLOSE()
+	ON_MESSAGE(WM_USER_RXSINGLEBYTE, OnRXSingleByte)
+END_MESSAGE_MAP()
+
+BEGIN_DISPATCH_MAP(CBTHostDlg, CDHtmlDialog)
+	DISP_FUNCTION(CBTHostDlg, "txBytes", txBytes, VT_EMPTY, VTS_BSTR)
+END_DISPATCH_MAP()
 
 CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	: CDHtmlDialog(IDD_BTHOST_DIALOG, IDR_HTML_BTHOST_DIALOG, pParent)
@@ -70,6 +81,8 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 #ifdef _DEBUG
 	m_dwThreadAffinity = ::GetCurrentThreadId();
 #endif
+
+	EnableAutomation();
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 	m_iRetCWSAStartup = -1;
 	m_addrKRT2 = {
@@ -115,12 +128,6 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 #endif
 }
 
-BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
-	ON_WM_SYSCOMMAND()
-	ON_WM_CLOSE()
-	ON_MESSAGE(WM_USER_RXSINGLEBYTE, OnRXSingleByte)
-END_MESSAGE_MAP()
-
 /*virtual*/void CBTHostDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDHtmlDialog::DoDataExchange(pDX);
@@ -139,6 +146,7 @@ END_MESSAGE_MAP()
 	// m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
 	m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
 	CDHtmlDialog::OnInitDialog();
+	SetExternalDispatch((LPDISPATCH)GetInterface(&IID_IDispatch));
 
 	// Add "About..." menu item to system menu.
 
@@ -187,8 +195,14 @@ END_MESSAGE_MAP()
 	m_spHtmlDoc->get_Script(&m_ddScript.p);
 
 	// SetElementProperty(_T("btnSoft1"), DISPID_VALUE, &CComVariant(L"Check hurtz")); // for <input> elements
-	SetElementText(_T("btnSoft1"), _T("SendPing")); // _T("Check SPP")
-	SetElementText(_T("btnSoft2"), _T("Connect"));
+	// SetElementText(_T("btnSoft1"), _T("SendPing")); // OnSendPing
+	SetElementText(_T("btnSoft1"), _T("Discover")); // OnDiscover
+	SetElementText(_T("btnSoft2"), _T("Connect")); // OnConnect
+}
+
+/*virtual*/ BOOL CBTHostDlg::IsExternalDispatchSafe()
+{
+	return TRUE; // __super::IsExternalDispatchSafe();
 }
 
 /*
@@ -301,7 +315,7 @@ LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
-HRESULT CBTHostDlg::OnCheck(IHTMLElement* /*pElement*/)
+HRESULT CBTHostDlg::OnDiscover(IHTMLElement* /*pElement*/)
 {
 	HRESULT hr = NOERROR;
 	HANDLE hRadio = NULL;
@@ -1081,3 +1095,22 @@ HRESULT CBTHostDlg::enumBTServices(
 	AfxGetMainWnd()->PostMessage(WM_USER_RXSINGLEBYTE, MAKEWPARAM(*CBTHostDlg::m_buf, dwBytesTransferred), NULL);
 }
 #endif
+
+void CBTHostDlg::txBytes(
+	BSTR bstrBytes)
+{
+	char rgData[0x100];
+	char* pWrite = rgData;
+	WCHAR* pcNext = NULL;
+	LPWSTR szToken = _tcstok_s(bstrBytes, L" ", &pcNext); // bstrBytes will be modified!
+	while (NULL != szToken)
+	{
+		*pWrite++ = _tcstol(szToken, NULL, 16);
+		szToken = _tcstok_s(NULL, L" ", &pcNext);
+	}
+
+	if (SOCKET_ERROR == ::send(CBTHostDlg::m_socketLocal, rgData, pWrite - rgData, 0))
+		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
+
+	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() NoOfBytes: 0x%.8x\n"), pWrite - rgData);
+}

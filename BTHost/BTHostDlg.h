@@ -33,6 +33,7 @@ protected:
 	// Generated message map functions
 	virtual BOOL OnInitDialog();
 	virtual void OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl);
+	virtual BOOL IsExternalDispatchSafe();
 
 	STDMETHOD(TranslateAccelerator)(LPMSG lpMsg, const GUID *pguidCmdGroup, DWORD nCmdID);
 
@@ -63,9 +64,12 @@ protected:
 
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
-	HRESULT OnCheck(IHTMLElement *pElement);
+	HRESULT OnDiscover(IHTMLElement *pElement);
 	HRESULT OnSendPing(IHTMLElement* /*pElement*/);
 	HRESULT OnConnect(IHTMLElement *pElement);
+
+	DECLARE_DISPATCH_MAP() // public interface to HTML/GUI, DO NOT CHANGE
+	void txBytes(BSTR bstrBytes);
 
 private:
 	static SOCKET m_socketLocal;

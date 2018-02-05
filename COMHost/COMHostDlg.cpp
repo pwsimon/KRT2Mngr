@@ -175,16 +175,16 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 	return TRUE; // return TRUE  unless you set the focus to a control
 }
 
-/*virtual*/ BOOL CCOMHostDlg::IsExternalDispatchSafe()
-{
-	return TRUE; // __super::IsExternalDispatchSafe();
-}
-
 /*virtual*/ void CCOMHostDlg::OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl)
 {
 	CDHtmlDialog::OnDocumentComplete(pDisp, szUrl);
 	// SetElementText(_T("btnSoft1"), _T("InitInputOutput"));
 	SetElementText(_T("btnSoft1"), _T("ReceiveAck"));
+}
+
+/*virtual*/ BOOL CCOMHostDlg::IsExternalDispatchSafe()
+{
+	return TRUE; // __super::IsExternalDispatchSafe();
 }
 
 // CCOMHostDlg message handlers

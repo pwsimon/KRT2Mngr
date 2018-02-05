@@ -59,12 +59,13 @@ protected:
 	HRESULT ReceiveAck(IHTMLElement*);
 	HRESULT sendAck();
 
-	DECLARE_DISPATCH_MAP()
-	long doSendCommand(BSTR bstrCommand);
+	DECLARE_DISPATCH_MAP() // public interface to HTML/GUI, DO NOT CHANGE
 	long sendCommand(BSTR bstrCommand, LPDISPATCH spCallback);
 	long fireAndForget(BSTR bstrCommand);
-	CComDispatchDriver m_ddSendCommand;
 	void receiveCommand(LPDISPATCH pCallback);
+
+	long doSendCommand(BSTR bstrCommand);
+	CComDispatchDriver m_ddSendCommand;
 	CComBSTR m_bstrReceiveCommand;
 	CComDispatchDriver m_ddReceiveCommand;
 };

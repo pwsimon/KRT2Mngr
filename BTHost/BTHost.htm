@@ -5,6 +5,12 @@
 function OnRXSingleByte(nByte) {
 	document.getElementById('lblCommand').innerText = String.fromCharCode(nByte);
 }
+function sendSingleCommand() {
+	/* fire and forget
+	* bytes send asynchronous and nonblocking, you will ne notified (Ack/Nak) via OnRXSingleByte
+	*/
+	window.external.txBytes("0x06 0x4f"); // { STX, 'O' }; // 1.2.6 DUAL-mode on
+}
 	</script>
 </HEAD>
 
@@ -17,7 +23,8 @@ function OnRXSingleByte(nByte) {
 	<TR WIDTH=100% HEIGHT=100%>
 		<TD ALIGN=RIGHT VALIGN=BOTTOM>
 			<BUTTON ID="btnSoft1">undefined</BUTTON>&nbsp;
-			<BUTTON ID="btnSoft2">undefined</BUTTON>
+			<BUTTON ID="btnSoft2">undefined</BUTTON>&nbsp;
+			<BUTTON onclick="sendSingleCommand()">sendSingleCommand</BUTTON>
 		</TD>
 	</TR>
 </TABLE>

@@ -18,7 +18,7 @@
 # Modul(Host)
 ## physical device
 handles uninterpreted/raw bytes
-- window.external::TXCommand()
+- window.external::txBytes(VTS_BSTR)
 
 # Modul(HTML/JavaScript)
 ## basic protocol (window.external/ISerial)
