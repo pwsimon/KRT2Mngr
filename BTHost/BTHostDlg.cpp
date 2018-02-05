@@ -51,6 +51,14 @@ END_MESSAGE_MAP()
 #define ACK                     0x06
 #define NAK                     0x15
 
+#ifdef IOALERTABLE
+/*static*/ WSAOVERLAPPED CBTHostDlg::m_RecvOverlappedCompletionRoutine;
+/*static*/ char CBTHostDlg::m_buf[0x01];
+/*static*/ WSABUF CBTHostDlg::m_readBuffer = { _countof(CBTHostDlg::m_buf), CBTHostDlg::m_buf };
+#endif
+
+/*static*/ SOCKET CBTHostDlg::m_socketLocal = INVALID_SOCKET;
+
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
 	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnSendPing) // soft buttons
 	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
@@ -105,7 +113,6 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	m_ReadThreadArgs.hEvtTerminate = ::CreateEvent(NULL, TRUE, FALSE, NULL);
 	m_hReadThread = INVALID_HANDLE_VALUE;
 #endif
-	m_socketLocal = INVALID_SOCKET;
 }
 
 BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
@@ -195,7 +202,7 @@ STDMETHODIMP CBTHostDlg::TranslateAccelerator(LPMSG lpMsg, const GUID *pguidCmdG
 	{
 		const char ucBuffer[1] = { LOBYTE(LOWORD(lpMsg->wParam)) };
 		ATLTRACE2(atlTraceGeneral, 0, _T("SendChar: %hc\n"), *ucBuffer);
-		if (SOCKET_ERROR == ::send(m_socketLocal, ucBuffer, 1, 0))
+		if (SOCKET_ERROR == ::send(CBTHostDlg::m_socketLocal, ucBuffer, 1, 0))
 			CBTHostDlg::ShowWSALastError(_T("::send(socketLocal, ...)"));
 	}
 #endif
@@ -228,14 +235,14 @@ void CBTHostDlg::OnClose()
 	m_hReadThread = INVALID_HANDLE_VALUE;
 	::CloseHandle(m_ReadThreadArgs.hEvtTerminate);
 	m_ReadThreadArgs.hEvtTerminate = INVALID_HANDLE_VALUE;
-	_ASSERT(m_socketLocal == m_ReadThreadArgs.socketLocal);
+	_ASSERT(CBTHostDlg::m_socketLocal == m_ReadThreadArgs.socketLocal);
 	m_ReadThreadArgs.socketLocal = INVALID_SOCKET;
 	m_ReadThreadArgs.hwndMainDlg = NULL;
 #else
 #endif
 
-	::closesocket(m_socketLocal);
-	m_socketLocal = INVALID_SOCKET;
+	::closesocket(CBTHostDlg::m_socketLocal);
+	CBTHostDlg::m_socketLocal = INVALID_SOCKET;
 
 	if (0 == m_iRetCWSAStartup)
 		::WSACleanup();
@@ -282,9 +289,15 @@ HCURSOR CBTHostDlg::OnQueryDragIcon()
 LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 {
 	_ASSERT(m_dwThreadAffinity == ::GetCurrentThreadId());
+	// ATLTRACE2(atlTraceGeneral, 0, _T("::GetCurrentThreadId() 0x%.8x\n"), ::GetCurrentThreadId());
+
 	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() msg value: %hc, length: %hu\n"), LOWORD(wParam), HIWORD(wParam));
-	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() buf value: %hc\n"), *m_buf);
-	m_ddScript.Invoke1(_T("OnRXSingleByte"), &CComVariant(*m_buf));
+	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() buf value: %hc\n"), *CBTHostDlg::m_buf);
+	m_ddScript.Invoke1(_T("OnRXSingleByte"), &CComVariant(*CBTHostDlg::m_buf));
+
+	// read next / continue loop
+	CBTHostDlg::QueueRead();
+
 	return 0;
 }
 
@@ -302,14 +315,14 @@ HRESULT CBTHostDlg::OnSendPing(IHTMLElement* /*pElement*/)
 {
 #ifdef KRT2INPUT_PATH
 	char* szHeader = "GET " KRT2INPUT_PATH " HTTP/1.1\r\nHost: ws-psi.estos.de\r\n\r\n";
-	if (SOCKET_ERROR == ::send(m_socketLocal, szHeader, strlen(szHeader), 0))
+	if (SOCKET_ERROR == ::send(CBTHostDlg::m_socketLocal, szHeader, strlen(szHeader), 0))
 		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
 #endif
 
 #ifdef KRT2INPUT_BT
 #define O_COMMAND_LEN   0x02
 	char rgData[O_COMMAND_LEN] = { STX, 'O' }; // 1.2.6 DUAL-mode on
-	if (SOCKET_ERROR == ::send(m_socketLocal, rgData, _countof(rgData), 0))
+	if (SOCKET_ERROR == ::send(CBTHostDlg::m_socketLocal, rgData, _countof(rgData), 0))
 		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
 #endif
 
@@ -409,10 +422,10 @@ HRESULT CBTHostDlg::enumBTDevices(HANDLE hRadio)
 
 HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 {
-	m_socketLocal = ::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
-	if (INVALID_SOCKET != m_socketLocal)
+	CBTHostDlg::m_socketLocal = ::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
+	if (INVALID_SOCKET != CBTHostDlg::m_socketLocal)
 	{
-		if (INVALID_SOCKET != ::connect(m_socketLocal, (struct sockaddr *) pRemoteAddr, sizeof(SOCKADDR_BTH)))
+		if (INVALID_SOCKET != ::connect(CBTHostDlg::m_socketLocal, (struct sockaddr *) pRemoteAddr, sizeof(SOCKADDR_BTH)))
 		{
 			/*
 			* wir lesen IMMER nonblocking.
@@ -420,6 +433,8 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 			* READ_THREAD (GetOverlappedResult)
 			*/
 #ifdef IOALERTABLE
+			CBTHostDlg::InitCompletionRoutine();
+			CBTHostDlg::QueueRead();
 #endif
 		}
 		else
@@ -499,10 +514,10 @@ HRESULT CBTHostDlg::Connect(
 	* der call MUSS sicherstellen das die "addrServer" auch wirklich eine IPv4 (AF_INET) enthaelt
 	* SOCK_STREAM, A socket type that provides sequenced, reliable, two-way, connection-based byte streams with an OOB data transmission mechanism.
 	*/
-	m_socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (INVALID_SOCKET != m_socketLocal)
+	CBTHostDlg::m_socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (INVALID_SOCKET != CBTHostDlg::m_socketLocal)
 	{
-		if (INVALID_SOCKET != ::connect(m_socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
+		if (INVALID_SOCKET != ::connect(CBTHostDlg::m_socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
 		{
 			/*
 			* wir lesen IMMER nonblocking.
@@ -510,24 +525,13 @@ HRESULT CBTHostDlg::Connect(
 			* READ_THREAD (GetOverlappedResult)
 			*/
 #ifdef IOALERTABLE
-			// Make sure the RecvOverlapped struct is zeroed out
-			SecureZeroMemory((PVOID)& m_RecvOverlappedCompletionRoutine, sizeof(WSAOVERLAPPED));
-
-			// WSARecv function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms741688(v=vs.85).aspx
-			m_readBuffer = { _countof(m_buf), m_buf };
-			DWORD dwNumberOfBytesRecvd = 0;
-			DWORD dwFlags = 0; // MSG_PARTIAL, MSG_OOB
-			const int iRetC = ::WSARecv(m_socketLocal, &m_readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &m_RecvOverlappedCompletionRoutine, CBTHostDlg::WorkerRoutine);
-			if (SOCKET_ERROR == iRetC)
-			{
-				_ASSERT(WSA_IO_PENDING == ::WSAGetLastError());
-			}
-
+			CBTHostDlg::InitCompletionRoutine();
+			CBTHostDlg::QueueRead();
 #endif
 
 #ifdef READ_THREAD
 			m_ReadThreadArgs.hwndMainDlg = m_hWnd;
-			m_ReadThreadArgs.socketLocal = m_socketLocal;
+			m_ReadThreadArgs.socketLocal = CBTHostDlg::m_socketLocal;
 			_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hEvtTerminate);
 			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
 #endif
@@ -1043,12 +1047,37 @@ HRESULT CBTHostDlg::enumBTServices(
 }
 #endif
 
+/*static*/ HRESULT CBTHostDlg::QueueRead()
+{
+	// WSARecv function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms741688(v=vs.85).aspx
+	CBTHostDlg::m_readBuffer = { _countof(CBTHostDlg::m_buf), CBTHostDlg::m_buf };
+	DWORD dwNumberOfBytesRecvd = 0;
+	DWORD dwFlags = 0; // MSG_PARTIAL, MSG_OOB
+	const int iRetC = ::WSARecv(CBTHostDlg::m_socketLocal, &CBTHostDlg::m_readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &CBTHostDlg::m_RecvOverlappedCompletionRoutine, CBTHostDlg::WorkerRoutine);
+	if (SOCKET_ERROR == iRetC)
+	{
+		_ASSERT(WSA_IO_PENDING == ::WSAGetLastError());
+	}
+	return NOERROR;
+}
+
 #ifdef IOALERTABLE
+/*static*/HRESULT CBTHostDlg::InitCompletionRoutine()
+{
+	// Make sure the RecvOverlapped struct is zeroed out
+	SecureZeroMemory((PVOID)& CBTHostDlg::m_RecvOverlappedCompletionRoutine, sizeof(WSAOVERLAPPED));
+	return NOERROR;
+}
+
 /*static*/ void CALLBACK CBTHostDlg::WorkerRoutine(DWORD Error, DWORD dwBytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags)
 {
-	// _ASSERT(m_dwThreadAffinity == ::GetCurrentThreadId());
+	/*
+	* die CompletionRoutine wird offensichtlich durch den MainThread ausgefuehrt
+	* wenn wir die static WorkerRoutine() durch eine MemberFunction ersetzen haben wir gewonnen!
+	_ASSERT(m_dwThreadAffinity == ::GetCurrentThreadId());
+	*/
 
 	ATLTRACE2(atlTraceGeneral, 0, _T("CompletionRoutine() dwBytesTransferred: 0x%.8x, ::GetCurrentThreadId(): 0x%.8x\n"), dwBytesTransferred, ::GetCurrentThreadId());
-	AfxGetMainWnd()->PostMessage(WM_USER_RXSINGLEBYTE, MAKEWPARAM('S', dwBytesTransferred), NULL);
+	AfxGetMainWnd()->PostMessage(WM_USER_RXSINGLEBYTE, MAKEWPARAM(*CBTHostDlg::m_buf, dwBytesTransferred), NULL);
 }
 #endif

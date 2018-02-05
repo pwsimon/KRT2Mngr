@@ -47,10 +47,12 @@ protected:
 	static unsigned int __stdcall COMReadThread(void* arguments);
 #endif
 #ifdef IOALERTABLE
-	WSAOVERLAPPED m_RecvOverlappedCompletionRoutine;
-	char m_buf[0x01];
-	WSABUF m_readBuffer;
-	static void CALLBACK CBTHostDlg::WorkerRoutine(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags);
+	static WSAOVERLAPPED m_RecvOverlappedCompletionRoutine;
+	static char m_buf[0x01];
+	static WSABUF m_readBuffer;
+	static HRESULT InitCompletionRoutine();
+	static HRESULT QueueRead();
+	static void CALLBACK WorkerRoutine(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags);
 #endif
 
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
@@ -66,7 +68,7 @@ protected:
 	HRESULT OnConnect(IHTMLElement *pElement);
 
 private:
-	SOCKET m_socketLocal;
+	static SOCKET m_socketLocal;
 	CComDispatchDriver m_ddScript;
 	HRESULT enumBTRadio(HANDLE& hRadio);
 	HRESULT enumBTDevices(HANDLE hRadio);
