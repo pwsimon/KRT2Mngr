@@ -8,6 +8,7 @@
 - the Host ist responsible to bring the functionality to discover and connect a logical COM port/device.
 - 3 layered architecture, 1.) physical device, 2.) basic protocol, 3.) HTML/GUI
   layer 1 (physical device) and 2 (basic protocol) are implemented in C/C++.
+- zur simulation eines COM device lesen bzw. schreiben wir eine Datei (krt2input.bin/krt2output.bin)
 
 # Modul(Host)
 ## physical device
