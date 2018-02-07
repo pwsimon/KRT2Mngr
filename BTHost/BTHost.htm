@@ -1,6 +1,7 @@
 <HTML>
 
 <HEAD>
+	<meta http-equiv="X-UA-Compatible" content="IE=11" />
 	<script type="text/javascript">
 function OnRXSingleByte(nByte) {
 	document.getElementById('lblCommand').innerText = String.fromCharCode(nByte);
@@ -10,6 +11,9 @@ function sendSingleCommand() {
 	* bytes send asynchronous and nonblocking, you will ne notified (Ack/Nak) via OnRXSingleByte
 	*/
 	window.external.txBytes("0x06 0x4f"); // { STX, 'O' }; // 1.2.6 DUAL-mode on
+}
+window.onload = function () {
+	alert("documentMode: " + document.documentMode + ", compatMode: " + document.compatMode);
 }
 	</script>
 </HEAD>
