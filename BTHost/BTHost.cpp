@@ -141,12 +141,4 @@ BOOL CBTHostApp::InitInstance()
 
 	return TRUE;
 }
-
-#else
-/*virtual*/BOOL CBTHostApp::PumpMessage()
-{
-	ATLTRACE(atlTraceGeneral, 0, _T("CBTHostApp::PumpMessage()\n"));
-
-	return CWinApp::PumpMessage();
-}
 #endif

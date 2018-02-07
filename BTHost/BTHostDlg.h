@@ -35,9 +35,10 @@ protected:
 	virtual void OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl);
 	virtual BOOL IsExternalDispatchSafe();
 
+#if (27015 == KRT2INPUT_PORT)
 	STDMETHOD(TranslateAccelerator)(LPMSG lpMsg, const GUID *pguidCmdGroup, DWORD nCmdID);
+#endif
 
-// #define READ_THREAD
 #ifdef READ_THREAD
 	struct _ReadThreadArg {
 		HWND hwndMainDlg;
@@ -45,7 +46,7 @@ protected:
 		HANDLE hEvtTerminate;
 	} m_ReadThreadArgs;
 	HANDLE m_hReadThread;
-	static unsigned int __stdcall COMReadThread(void* arguments);
+	static unsigned int __stdcall BTReadThread(void* arguments);
 #endif
 #ifdef IOALERTABLE
 	static WSAOVERLAPPED m_RecvOverlappedCompletionRoutine;

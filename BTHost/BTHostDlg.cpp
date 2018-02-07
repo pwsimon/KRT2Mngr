@@ -42,7 +42,7 @@ BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
 END_MESSAGE_MAP()
 
 // CBTHostDlg dialog
-#define WM_USER_ACK             (WM_USER + 1) // posted from COMReadThread
+#define WM_USER_ACK             (WM_USER + 1) // posted from BTReadThread
 #define WM_USER_RXSINGLEBYTE    (WM_USER + 2)
 #define WM_USER_RXDECODEDCMD    (WM_USER + 3)
 
@@ -205,13 +205,15 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	return TRUE; // __super::IsExternalDispatchSafe();
 }
 
+#if (27015 == KRT2INPUT_PORT)
 /*
+* das ist nur eine debugging hilfe
+*
 * ich haette es lieber als ON_WM_CHAR bearbeitet aber da liegt die CDHtmlDialog klasse dazwischen
 * und der handler wird nicht aufgerufen. auch ein zusaetzliches OnGetDlgCode() hilft nix.
 */
 STDMETHODIMP CBTHostDlg::TranslateAccelerator(LPMSG lpMsg, const GUID *pguidCmdGroup, DWORD nCmdID)
 {
-#if (27015 == KRT2INPUT_PORT)
 	if (lpMsg->message == WM_CHAR)
 	{
 		const char ucBuffer[1] = { LOBYTE(LOWORD(lpMsg->wParam)) };
@@ -219,10 +221,10 @@ STDMETHODIMP CBTHostDlg::TranslateAccelerator(LPMSG lpMsg, const GUID *pguidCmdG
 		if (SOCKET_ERROR == ::send(CBTHostDlg::m_socketLocal, ucBuffer, 1, 0))
 			CBTHostDlg::ShowWSALastError(_T("::send(socketLocal, ...)"));
 	}
-#endif
 
 	return __super::TranslateAccelerator(lpMsg, pguidCmdGroup, nCmdID);
 }
+#endif
 
 // CBTHostDlg message handlers
 void CBTHostDlg::OnSysCommand(UINT nID, LPARAM lParam)
@@ -303,14 +305,15 @@ HCURSOR CBTHostDlg::OnQueryDragIcon()
 LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 {
 	_ASSERT(m_dwThreadAffinity == ::GetCurrentThreadId());
-	// ATLTRACE2(atlTraceGeneral, 0, _T("::GetCurrentThreadId() 0x%.8x\n"), ::GetCurrentThreadId());
-
+	_ASSERT(1 == HIWORD(wParam));
 	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() msg value: %hc, length: %hu\n"), LOWORD(wParam), HIWORD(wParam));
-	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() buf value: %hc\n"), *CBTHostDlg::m_buf);
-	m_ddScript.Invoke1(_T("OnRXSingleByte"), &CComVariant(*CBTHostDlg::m_buf));
+	m_ddScript.Invoke1(_T("OnRXSingleByte"), &CComVariant(LOWORD(wParam)));
 
 	// read next / continue loop
+#ifdef IOALERTABLE
+	_ASSERT(*CBTHostDlg::m_buf == LOWORD(wParam));
 	CBTHostDlg::QueueRead();
+#endif
 
 	return 0;
 }
@@ -547,7 +550,7 @@ HRESULT CBTHostDlg::Connect(
 			m_ReadThreadArgs.hwndMainDlg = m_hWnd;
 			m_ReadThreadArgs.socketLocal = CBTHostDlg::m_socketLocal;
 			_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hEvtTerminate);
-			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::COMReadThread, &m_ReadThreadArgs, 0, NULL);
+			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::BTReadThread, &m_ReadThreadArgs, 0, NULL);
 #endif
 		}
 		else
@@ -975,7 +978,7 @@ HRESULT CBTHostDlg::enumBTServices(
 }
 
 #ifdef READ_THREAD
-/*static*/ unsigned int CBTHostDlg::COMReadThread(void* arguments)
+/*static*/ unsigned int CBTHostDlg::BTReadThread(void* arguments)
 {
 	struct _ReadThreadArg* pArgs = (struct _ReadThreadArg*) arguments;
 	_ASSERT(NULL != pArgs->hwndMainDlg);
@@ -985,7 +988,14 @@ HRESULT CBTHostDlg::enumBTServices(
 	SecureZeroMemory((PVOID)& RecvOverlapped, sizeof(WSAOVERLAPPED));
 	RecvOverlapped.hEvent = ::WSACreateEvent();
 
-	// WSARecv function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms741688(v=vs.85).aspx
+	/*
+	* wir MUESSEN Byte weise lesen (denn mit jedem byte kann der CommandParser entscheiden dass, das aktuelle command zuende ist)
+	* ergo: nehmen wir hier einen lokalen Buffer
+	* 1.) wir muessen um dieses Byte an das WebBrowserCtrl zu dispatchen UNBEDINGT den Thread wechseln
+	* 2.) sparen wir uns die Synchronisation (Mutex) fuer den zugriff auf einen static Buffer
+	*
+	* WSARecv function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms741688(v=vs.85).aspx
+	*/
 	char buf[0x01];
 	WSABUF readBuffer = { _countof(buf), buf };
 	DWORD dwNumberOfBytesRecvd = 0;
@@ -997,7 +1007,7 @@ HRESULT CBTHostDlg::enumBTServices(
 		if (0 == iRetC)
 		{
 			ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Sync): 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
-			// ::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
+			::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(buf[0], dwNumberOfBytesRecvd), NULL);
 		}
 
 		else
@@ -1032,13 +1042,13 @@ HRESULT CBTHostDlg::enumBTServices(
 						break;
 					}
 
-					ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Async): 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
-					// ::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(rgCommand[0], 0), NULL);
-					::WSAResetEvent(RecvOverlapped.hEvent);
-
 					// If 0 bytes are received, the connection was closed
 					if (0 == dwNumberOfBytesRecvd)
 						break;
+
+					ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Async): 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
+					::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(buf[0], dwNumberOfBytesRecvd), NULL);
+					::WSAResetEvent(RecvOverlapped.hEvent);
 				}
 
 				else
@@ -1056,10 +1066,18 @@ HRESULT CBTHostDlg::enumBTServices(
 	}
 	::WSACloseEvent(RecvOverlapped.hEvent);
 
-	ATLTRACE2(atlTraceGeneral, 0, _T("Leave COMReadThread()\n"));
+	ATLTRACE2(atlTraceGeneral, 0, _T("Leave BTReadThread()\n"));
 	return 0;
 }
 #endif
+
+#ifdef IOALERTABLE
+/*static*/HRESULT CBTHostDlg::InitCompletionRoutine()
+{
+	// Make sure the RecvOverlapped struct is zeroed out
+	SecureZeroMemory((PVOID)& CBTHostDlg::m_RecvOverlappedCompletionRoutine, sizeof(WSAOVERLAPPED));
+	return NOERROR;
+}
 
 /*static*/ HRESULT CBTHostDlg::QueueRead()
 {
@@ -1075,15 +1093,7 @@ HRESULT CBTHostDlg::enumBTServices(
 	return NOERROR;
 }
 
-#ifdef IOALERTABLE
-/*static*/HRESULT CBTHostDlg::InitCompletionRoutine()
-{
-	// Make sure the RecvOverlapped struct is zeroed out
-	SecureZeroMemory((PVOID)& CBTHostDlg::m_RecvOverlappedCompletionRoutine, sizeof(WSAOVERLAPPED));
-	return NOERROR;
-}
-
-/*static*/ void CALLBACK CBTHostDlg::WorkerRoutine(DWORD Error, DWORD dwBytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags)
+/*static*/ void CALLBACK CBTHostDlg::WorkerRoutine(DWORD dwError, DWORD dwBytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags)
 {
 	/*
 	* die CompletionRoutine wird offensichtlich durch den MainThread ausgefuehrt
@@ -1092,7 +1102,10 @@ HRESULT CBTHostDlg::enumBTServices(
 	*/
 
 	ATLTRACE2(atlTraceGeneral, 0, _T("CompletionRoutine() dwBytesTransferred: 0x%.8x, ::GetCurrentThreadId(): 0x%.8x\n"), dwBytesTransferred, ::GetCurrentThreadId());
-	AfxGetMainWnd()->PostMessage(WM_USER_RXSINGLEBYTE, MAKEWPARAM(*CBTHostDlg::m_buf, dwBytesTransferred), NULL);
+	if (0 < dwBytesTransferred)
+	{
+		AfxGetMainWnd()->PostMessage(WM_USER_RXSINGLEBYTE, MAKEWPARAM(*CBTHostDlg::m_buf, dwBytesTransferred), NULL);
+	}
 }
 #endif
 

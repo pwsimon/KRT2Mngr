@@ -18,13 +18,13 @@ public:
 
 // Overrides
 public:
-#ifdef IOALERTABLE
 	virtual BOOL InitInstance();
+#ifdef IOALERTABLE
+	virtual BOOL PumpMessage();
 #endif
 
 // Implementation
 	DECLARE_MESSAGE_MAP()
-	virtual BOOL PumpMessage();
 };
 
 extern CBTHostApp theApp;
