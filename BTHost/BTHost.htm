@@ -88,7 +88,7 @@ window.onload = function () {
 	OnRXSingleByte("s".charCodeAt(0));
 	OnRXSingleByte("H".charCodeAt(0));
 	OnRXSingleByte("f".charCodeAt(0));
-	OnRXSingleByte(256); // checkSum
+	OnRXSingleByte(256); // nChkSum
 
 	OnRXSingleByte("S".charCodeAt(0));
 
@@ -104,7 +104,8 @@ window.onload = function () {
 	OnRXSingleByte("s".charCodeAt(0));
 	OnRXSingleByte("H".charCodeAt(0));
 	OnRXSingleByte("f".charCodeAt(0));
-	OnRXSingleByte(256); // checkSum
+	OnRXSingleByte(0); // nNr (Slot)
+	OnRXSingleByte(256); // nChkSum
 }
 	</script>
 </HEAD>
