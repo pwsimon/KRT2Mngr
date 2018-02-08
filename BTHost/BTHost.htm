@@ -3,8 +3,67 @@
 <HEAD>
 	<meta http-equiv="X-UA-Compatible" content="IE=11" />
 	<script type="text/javascript">
+var cmdParser;
+function CommandParser() {
+	this.rgCmd = {};
+	this.rgKeys = [];
+	this.nIndex = 0;
+
+	// functions
+	this.Drive = function (nByte) {
+		var sCmd = String.fromCharCode(nByte);
+
+		if (this.nIndex) {
+			this.rgCmd[this.rgKeys[this.nIndex]] = nByte;
+			this.nIndex++;
+			return this.nIndex == this.rgKeys.length;
+		}
+
+		else if ("O" == sCmd) {
+			this.rgCmd = { sCmd: sCmd };
+			return true;
+		}
+
+		else if ("o" == sCmd) {
+			this.rgCmd = { sCmd: sCmd };
+			return true;
+		}
+
+		else if ("R" == sCmd) {
+			this.rgCmd = { sCmd: sCmd, nMHZ: 0, nkHZ: 0, sStation0: ' ', sStation1: ' ', sStation2: ' ', sStation3: ' ', sStation4: ' ', sStation5: ' ', sStation6: ' ', sStation7: ' ', nNr: 0, nChkSum: 0 };
+		}
+
+		else if ("U" == String.fromCharCode(nByte)) {
+			this.rgCmd = { sCmd: sCmd, nMHZ: 0, nkHZ: 0, sStation0: ' ', sStation1: ' ', sStation2: ' ', sStation3: ' ', sStation4: ' ', sStation5: ' ', sStation6: ' ', sStation7: ' ', nChkSum: 0 };
+		}
+
+		this.rgKeys = Object.keys(this.rgCmd);
+		this.nIndex = 1;
+	}
+}
 function OnRXSingleByte(nByte) {
-	document.getElementById('lblCommand').innerText = String.fromCharCode(nByte);
+	// document.getElementById('lblCommand').innerText = String.fromCharCode(nByte);
+	if("S".charCodeAt(0) == nByte) {
+		console.log("ping");
+	}
+
+	else if (6 == nByte) { // STX
+		if (cmdParser)
+			console.log("previous command unsuccessfull/interrupted");
+
+		cmdParser = new CommandParser();
+	}
+
+	else {
+		if (cmdParser) {
+			if (cmdParser.Drive(nByte)) {
+				console.log("finished:", cmdParser.rgCmd.sCmd);
+				cmdParser = null; // enter IDLE
+			}
+		}
+		else
+			cmdParser = new CommandParser(nByte);
+	}
 }
 function sendSingleCommand() {
 	/* fire and forget
@@ -13,7 +72,39 @@ function sendSingleCommand() {
 	window.external.txBytes("0x06 0x4f"); // { STX, 'O' }; // 1.2.6 DUAL-mode on
 }
 window.onload = function () {
-	alert("documentMode: " + document.documentMode + ", compatMode: " + document.compatMode);
+	// alert("documentMode: " + document.documentMode + ", compatMode: " + document.compatMode);
+	OnRXSingleByte(6); // STX
+	OnRXSingleByte("O".charCodeAt(0));
+
+	OnRXSingleByte(6); // STX
+	OnRXSingleByte("U".charCodeAt(0));
+	OnRXSingleByte(123);
+	OnRXSingleByte(500);
+	OnRXSingleByte("G".charCodeAt(0));
+	OnRXSingleByte("e".charCodeAt(0));
+	OnRXSingleByte("r".charCodeAt(0));
+	OnRXSingleByte("a".charCodeAt(0));
+	OnRXSingleByte("t".charCodeAt(0));
+	OnRXSingleByte("s".charCodeAt(0));
+	OnRXSingleByte("H".charCodeAt(0));
+	OnRXSingleByte("f".charCodeAt(0));
+	OnRXSingleByte(256); // checkSum
+
+	OnRXSingleByte("S".charCodeAt(0));
+
+	OnRXSingleByte(6); // STX
+	OnRXSingleByte("R".charCodeAt(0));
+	OnRXSingleByte(123);
+	OnRXSingleByte(500);
+	OnRXSingleByte("G".charCodeAt(0));
+	OnRXSingleByte("e".charCodeAt(0));
+	OnRXSingleByte("r".charCodeAt(0));
+	OnRXSingleByte("a".charCodeAt(0));
+	OnRXSingleByte("t".charCodeAt(0));
+	OnRXSingleByte("s".charCodeAt(0));
+	OnRXSingleByte("H".charCodeAt(0));
+	OnRXSingleByte("f".charCodeAt(0));
+	OnRXSingleByte(256); // checkSum
 }
 	</script>
 </HEAD>
