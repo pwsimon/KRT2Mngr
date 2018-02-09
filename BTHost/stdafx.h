@@ -39,8 +39,8 @@
 // #define KRT2INPUT_BT       _T("KRT21885") // 98:D3:31:FD:5A:F2
 
 // either READ_THREAD or IOALERTABLE
-// #define READ_THREAD
-#define IOALERTABLE
+#define READ_THREAD
+// #define IOALERTABLE
 
 #ifdef _UNICODE
 #if defined _M_IX86

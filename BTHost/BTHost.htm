@@ -3,7 +3,7 @@
 <HEAD>
 	<meta http-equiv="X-UA-Compatible" content="IE=11" />
 	<script type="text/javascript">
-var cmdParser;
+var g_cmdParser;
 function CommandParser() {
 	this.rgCmd = {};
 	this.fnVerify; // undefined OR null laeuft hier auf das gleiche hinaus, KEINE verification routine
@@ -18,6 +18,7 @@ function CommandParser() {
 			this.rgCmd[this.rgKeys[this.nIndex]] = nByte;
 			this.nIndex++;
 			if (this.nIndex == this.rgKeys.length) {
+				window.clearTimeout(this.tTimeout);
 				return this.fnVerify ? this.fnVerify() : true;
 			}
 			return false;
@@ -27,11 +28,18 @@ function CommandParser() {
 		else if ("O" == sCmd) {
 			this.rgCmd = { sCmd: sCmd };
 			this.fnVerify = null; // single byte commands haben generell KEINE verification function
+			/*
+			* wird mit dem constructor (STX) gestartet
+			* fuer MultiByte commands wird der Timeout, zentral, mit der bedingung (this.nIndex == this.rgKeys.length) zurueckgesetzt
+			*/
+			window.clearTimeout(this.tTimeout);
 			return true;
 		}
 
 		else if ("o" == sCmd) {
 			this.rgCmd = { sCmd: sCmd };
+			this.fnVerify = null; // single byte commands haben generell KEINE verification function
+			window.clearTimeout(this.tTimeout); // wird mit dem constructor (STX) gestartet
 			return true;
 		}
 
@@ -56,29 +64,36 @@ function CommandParser() {
 	this.fnVerifyChkSum = function (sNamedId1, sNamedId2, sNamedIdResult) {
 		return function() { return this.rgCmd[sNamedIdResult] == this.rgCmd[sNamedId1] ^ this.rgCmd[sNamedId2] };
 	}
+	this.tTimeout = window.setTimeout(function () {
+		console.log("reset the global parser");
+		document.getElementById('lblCommand').innerText = "reset the global parser";
+		g_cmdParser = null; // enter IDLE
+	}, 5000); // 9600 baud => 100 Char/Sec => 50 Char/0.5 Sec
 }
 function OnRXSingleByte(nByte) {
 	// document.getElementById('lblCommand').innerText = String.fromCharCode(nByte);
 	if("S".charCodeAt(0) == nByte) {
 		console.log("ping");
+		document.getElementById('lblCommand').innerText = "ping";
 	}
 
 	else if (6 == nByte) { // STX
-		if (cmdParser)
+		if (g_cmdParser)
 			console.log("previous command unsuccessfull/interrupted");
 
-		cmdParser = new CommandParser();
+		g_cmdParser = new CommandParser();
 	}
 
 	else {
-		if (cmdParser) {
-			if (cmdParser.Drive(nByte)) {
-				console.log("finished:", cmdParser.rgCmd.sCmd);
-				cmdParser = null; // enter IDLE
+		if (g_cmdParser) {
+			if (g_cmdParser.Drive(nByte)) {
+				// console.log("finished:", g_cmdParser.rgCmd.sCmd);
+				document.getElementById('lblCommand').innerText = "finished: " + g_cmdParser.rgCmd.sCmd;
+				g_cmdParser = null; // enter IDLE
 			}
 		}
 		else
-			cmdParser = new CommandParser(nByte);
+			g_cmdParser = new CommandParser(nByte);
 	}
 }
 function sendSingleCommand() {
@@ -89,7 +104,7 @@ function sendSingleCommand() {
 }
 window.onload = function () {
 	// alert("documentMode: " + document.documentMode + ", compatMode: " + document.compatMode);
-	OnRXSingleByte(6); // STX
+	/* OnRXSingleByte(6); // STX
 	OnRXSingleByte("O".charCodeAt(0));
 
 	OnRXSingleByte(6); // STX
@@ -121,7 +136,7 @@ window.onload = function () {
 	OnRXSingleByte("H".charCodeAt(0));
 	OnRXSingleByte("f".charCodeAt(0));
 	OnRXSingleByte(0); // nNr (Slot)
-	OnRXSingleByte(256); // nChkSum
+	OnRXSingleByte(256); // nChkSum */
 }
 	</script>
 </HEAD>
@@ -130,7 +145,7 @@ window.onload = function () {
 
 <TABLE WIDTH=100% HEIGHT=100%>
 	<TR WIDTH=100% HEIGHT=45%>
-		<TD ID="lblCommand" ALIGN=CENTER VALIGN=BOTTOM>0x00</TD>
+		<TD ID="lblCommand" ALIGN=CENTER VALIGN=BOTTOM>empty</TD>
 	</TR>
 	<TR WIDTH=100% HEIGHT=100%>
 		<TD ALIGN=RIGHT VALIGN=BOTTOM>

@@ -216,7 +216,12 @@ STDMETHODIMP CBTHostDlg::TranslateAccelerator(LPMSG lpMsg, const GUID *pguidCmdG
 {
 	if (lpMsg->message == WM_CHAR)
 	{
-		const char ucBuffer[1] = { LOBYTE(LOWORD(lpMsg->wParam)) };
+		char ucBuffer[1];
+		if(0x30 <= LOBYTE(LOWORD(lpMsg->wParam)) && 0x39 >= LOBYTE(LOWORD(lpMsg->wParam)))
+			ucBuffer[0] = LOBYTE(LOWORD(lpMsg->wParam)) - 0x30;
+		else
+			ucBuffer[0] = LOBYTE(LOWORD(lpMsg->wParam));
+
 		ATLTRACE2(atlTraceGeneral, 0, _T("SendChar: %hc\n"), *ucBuffer);
 		if (SOCKET_ERROR == ::send(CBTHostDlg::m_socketLocal, ucBuffer, 1, 0))
 			CBTHostDlg::ShowWSALastError(_T("::send(socketLocal, ...)"));
