@@ -6,6 +6,7 @@
 var cmdParser;
 function CommandParser() {
 	this.rgCmd = {};
+	this.fnVerify; // undefined OR null laeuft hier auf das gleiche hinaus, KEINE verification routine
 	this.rgKeys = [];
 	this.nIndex = 0;
 
@@ -16,11 +17,16 @@ function CommandParser() {
 		if (this.nIndex) {
 			this.rgCmd[this.rgKeys[this.nIndex]] = nByte;
 			this.nIndex++;
-			return this.nIndex == this.rgKeys.length;
+			if (this.nIndex == this.rgKeys.length) {
+				return this.fnVerify ? this.fnVerify() : true;
+			}
+			return false;
 		}
 
+		// single byte commands
 		else if ("O" == sCmd) {
 			this.rgCmd = { sCmd: sCmd };
+			this.fnVerify = null; // single byte commands haben generell KEINE verification function
 			return true;
 		}
 
@@ -29,16 +35,26 @@ function CommandParser() {
 			return true;
 		}
 
+		// MultiByte commands
 		else if ("R" == sCmd) {
 			this.rgCmd = { sCmd: sCmd, nMHZ: 0, nkHZ: 0, sStation0: ' ', sStation1: ' ', sStation2: ' ', sStation3: ' ', sStation4: ' ', sStation5: ' ', sStation6: ' ', sStation7: ' ', nNr: 0, nChkSum: 0 };
+			/*
+			* die this.fnVerify() funktion wird ausgefuehrt wenn das letzte Byte eines commands gelesen wurde
+			* fnVerifyChkSum() liefert eine funktion die folgenden ausdruck verifiziert (eval): 'nMHZ' ^ 'nkHZ' == 'nChkSum'
+			*/
+			this.fnVerify = this.fnVerifyChkSum('nMHZ', 'nkHZ', 'nChkSum');
 		}
 
 		else if ("U" == String.fromCharCode(nByte)) {
 			this.rgCmd = { sCmd: sCmd, nMHZ: 0, nkHZ: 0, sStation0: ' ', sStation1: ' ', sStation2: ' ', sStation3: ' ', sStation4: ' ', sStation5: ' ', sStation6: ' ', sStation7: ' ', nChkSum: 0 };
+			this.fnVerify = null; // KEIN(E) verify (funktion) nachdem alle bytes des command gelesen wurden
 		}
 
 		this.rgKeys = Object.keys(this.rgCmd);
 		this.nIndex = 1;
+	}
+	this.fnVerifyChkSum = function (sNamedId1, sNamedId2, sNamedIdResult) {
+		return function() { return this.rgCmd[sNamedIdResult] == this.rgCmd[sNamedId1] ^ this.rgCmd[sNamedId2] };
 	}
 }
 function OnRXSingleByte(nByte) {
