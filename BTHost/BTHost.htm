@@ -4,6 +4,11 @@
 	<meta http-equiv="X-UA-Compatible" content="IE=11" />
 	<script type="text/javascript">
 var g_cmdParser;
+var g_cmdParserAckNakHandler;
+/*
+* umstellen von Pseudoklassischer Vererbung (Philip Ackermann S. 145)
+* auf Prototypische Vererbung (Philip Ackermann S. 136)
+*/
 function CommandParser() {
 	this.rgCmd = {};
 	this.fnVerify; // undefined OR null laeuft hier auf das gleiche hinaus, KEINE verification routine
@@ -71,29 +76,42 @@ function CommandParser() {
 	}, 5000); // 9600 baud => 100 Char/Sec => 50 Char/0.5 Sec
 }
 function OnRXSingleByte(nByte) {
-	// document.getElementById('lblCommand').innerText = String.fromCharCode(nByte);
-	if("S".charCodeAt(0) == nByte) {
+	/*
+	* document.getElementById('lblCommand').innerText = String.fromCharCode(nByte);
+	* solange ein parser (g_cmdParser) active ist muss dieser die hoechste prioritaet haben
+	*/
+	if (g_cmdParser) {
+		if (g_cmdParser.Drive(nByte)) {
+			// console.log("finished:", g_cmdParser.rgCmd.sCmd);
+			document.getElementById('lblCommand').innerText = "finished: " + g_cmdParser.rgCmd.sCmd;
+			g_cmdParser = null; // enter IDLE
+		}
+	}
+
+	else if("S".charCodeAt(0) == nByte) {
 		console.log("ping");
 		document.getElementById('lblCommand').innerText = "ping";
 	}
 
-	else if (6 == nByte) { // STX
+	else if (2 == nByte) { // STX
 		if (g_cmdParser)
 			console.log("previous command unsuccessfull/interrupted");
 
 		g_cmdParser = new CommandParser();
 	}
 
+	else if (6 == nByte && g_cmdParserAckNakHandler) { // ACK
+		console.log("delegate to initiator of txBytes()");
+		g_cmdParserAckNakHandler(nByte);
+	}
+
+	else if (15 == nByte && g_cmdParserAckNakHandler) { // NAK
+		console.log("delegate to initiator of txBytes()");
+		g_cmdParserAckNakHandler(nByte);
+	}
+
 	else {
-		if (g_cmdParser) {
-			if (g_cmdParser.Drive(nByte)) {
-				// console.log("finished:", g_cmdParser.rgCmd.sCmd);
-				document.getElementById('lblCommand').innerText = "finished: " + g_cmdParser.rgCmd.sCmd;
-				g_cmdParser = null; // enter IDLE
-			}
-		}
-		else
-			g_cmdParser = new CommandParser(nByte);
+		console.log("invalid sequence");
 	}
 }
 function sendSingleCommand() {
