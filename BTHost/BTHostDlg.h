@@ -65,7 +65,8 @@ protected:
 
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
-	HRESULT OnDiscover(IHTMLElement *pElement);
+	HRESULT OnDiscoverDevice(IHTMLElement *pElement);
+	HRESULT OnDiscoverService(IHTMLElement *pElement);
 	HRESULT OnSendPing(IHTMLElement* /*pElement*/);
 	HRESULT OnConnect(IHTMLElement *pElement);
 

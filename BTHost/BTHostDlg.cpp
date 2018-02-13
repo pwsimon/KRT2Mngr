@@ -61,7 +61,7 @@ END_MESSAGE_MAP()
 
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
 	// DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnSendPing) // soft buttons
-	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnDiscover)
+	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnDiscoverService)
 	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
 END_DHTML_EVENT_MAP()
 
@@ -201,7 +201,8 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 
 	// SetElementProperty(_T("btnSoft1"), DISPID_VALUE, &CComVariant(L"Check hurtz")); // for <input> elements
 	// SetElementText(_T("btnSoft1"), _T("SendPing")); // OnSendPing
-	SetElementText(_T("btnSoft1"), _T("Discover")); // OnDiscover
+	// SetElementText(_T("btnSoft1"), _T("DiscoverDevice")); // OnDiscoverDevice
+	SetElementText(_T("btnSoft1"), _T("DiscoverService")); // DiscoverService
 	SetElementText(_T("btnSoft2"), _T("Connect")); // OnConnect
 }
 
@@ -334,14 +335,26 @@ LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
-HRESULT CBTHostDlg::OnDiscover(IHTMLElement* /*pElement*/)
+HRESULT CBTHostDlg::OnDiscoverDevice(IHTMLElement* /*pElement*/)
 {
 	HRESULT hr = NOERROR;
 	HANDLE hRadio = NULL;
-	hr = enumBTRadio(hRadio);
-	// hr = enumBTDevices(SerialPortServiceClass_UUID);
+	// hr = enumBTRadio(hRadio);
+	hr = enumBTDevices(SerialPortServiceClass_UUID);
 
 	return S_OK;
+}
+
+HRESULT CBTHostDlg::OnDiscoverService(IHTMLElement* /*pElement*/)
+{
+	/*
+	* KRT21885       => L"(98:D3:31:FD:5A:F2)"
+	* GT-I9300       => L"(0C:14:20:4A:1F:AD)"
+	* Blackwire C720 => L"(48:C1:AC:4A:C6:93)"
+	*/
+	HRESULT hr = enumBTServices(L"(98:D3:31:FD:5A:F2)", SerialPortServiceClass_UUID); // SerialPortServiceClass_UUID, OBEXObjectPushServiceClass_UUID
+	hr = enumBTServices(L"(0C:14:20:4A:1F:AD)", OBEXObjectPushServiceClass_UUID); // L2CAP_PROTOCOL_UUID
+	return hr;
 }
 
 HRESULT CBTHostDlg::OnSendPing(IHTMLElement* /*pElement*/)
@@ -653,11 +666,11 @@ HRESULT CBTHostDlg::enumBTDevices(GUID serviceClass)
 				enumBTServices(bstrAddress, serviceClass);
 			}
 		}
-
 	}
-	if (hLookup)
-		WSALookupServiceEnd(hLookup);
 
+	if (hLookup)
+		::WSALookupServiceEnd(hLookup);
+	hLookup = NULL;
 	return NOERROR;
 }
 
@@ -665,40 +678,49 @@ HRESULT CBTHostDlg::enumBTServices(
 	LPCWSTR szDeviceAddress,
 	GUID serviceClass)
 {
-	//Initialise querying the device services
+	WCHAR szGUID[0x100];
+	::StringFromGUID2(serviceClass, szGUID, _countof(szGUID));
+	ATLTRACE2(atlTraceGeneral, 0, _T("enumBTServices(%s, %s)\n"), szDeviceAddress, szGUID);
+
+	/*
+	* Initialise querying the device services
+	*/
 	WCHAR addressAsString[1000] = { 0 };
 	wcscpy_s(addressAsString, szDeviceAddress);
 
-	WSAQUERYSET queryset2;
-	memset(&queryset2, 0, sizeof(queryset2));
-	queryset2.dwSize = sizeof(queryset2);
-	queryset2.dwNameSpace = NS_BTH;
-	queryset2.dwNumberOfCsAddrs = 0;
-	queryset2.lpszContext = addressAsString;
+	WSAQUERYSET queryset;
+	memset(&queryset, 0, sizeof(WSAQUERYSET));
+	queryset.dwSize = sizeof(WSAQUERYSET);
+	queryset.dwNameSpace = NS_BTH;
+	queryset.dwNumberOfCsAddrs = 0;
+	queryset.lpszContext = addressAsString;
 
-	queryset2.lpServiceClassId = &serviceClass;
+	queryset.lpServiceClassId = &serviceClass;
 
 	HANDLE hLookup = NULL;
-	//do not set LUP_CONTAINERS, we are querying for services
-	//LUP_FLUSHCACHE would be used if we want to do an inquiry
-	int result2 = ::WSALookupServiceBegin(&queryset2, 0, &hLookup);
-	if (0 != result2)
+	/*
+	* do not set LUP_CONTAINERS, we are querying for services
+	* LUP_FLUSHCACHE would be used if we want to do an inquiry
+	* Bluetooth and WSALookupServiceBegin for Service Discovery, https://msdn.microsoft.com/en-us/library/windows/desktop/aa362914(v=vs.85).aspx
+	*/
+	int result = ::WSALookupServiceBegin(&queryset, 0, &hLookup);
+	if (0 != result)
 		CBTHostDlg::ShowWSALastError(_T("WSALookupServiceBegin (service discovery)"));
 
-	while (result2 == NO_ERROR)
+	while (result == NO_ERROR)
 	{
-		BYTE buffer2[8096];
-		memset(buffer2, 0, sizeof(buffer2));
-		DWORD bufferLength2 = sizeof(buffer2);
-		WSAQUERYSET *pResults2 = (WSAQUERYSET*)&buffer2;
-		result2 = ::WSALookupServiceNext(hLookup, LUP_RETURN_ALL, &bufferLength2, pResults2);
-		if (result2 == 0)
+		BYTE buffer[0x2000];
+		memset(buffer, 0, sizeof(buffer));
+		DWORD bufferLength = sizeof(buffer);
+		WSAQUERYSET* pResults = (WSAQUERYSET*)&buffer;
+		result = ::WSALookupServiceNext(hLookup, LUP_RETURN_ALL, &bufferLength, pResults);
+		if (result == 0)
 		{
-			CString strServiceName = pResults2->lpszServiceInstanceName;
-			// ATLTRACE2(atlTraceGeneral, 0, _T("%ls\n"), pResults2->lpszServiceInstanceName);
-			if (pResults2->dwNumberOfCsAddrs && pResults2->lpcsaBuffer)
+			CString strServiceName = pResults->lpszServiceInstanceName;
+			// ATLTRACE2(atlTraceGeneral, 0, _T("%ls\n"), pResults->lpszServiceInstanceName);
+			if (pResults->dwNumberOfCsAddrs && pResults->lpcsaBuffer)
 			{
-				PCSADDR_INFO addrService = (PCSADDR_INFO) pResults2->lpcsaBuffer;
+				PCSADDR_INFO addrService = (PCSADDR_INFO) pResults->lpcsaBuffer;
 				CComBSTR bstrAddress;
 				/*
 				* nachdem ich DEFINITIV Bluetooth (devices/services) aufzaehle MUSS
@@ -709,11 +731,11 @@ HRESULT CBTHostDlg::enumBTServices(
 					PSOCKADDR_BTH pSockAddrBT = (PSOCKADDR_BTH)addrService->RemoteAddr.lpSockaddr;
 					_ASSERT(AF_BTH == pSockAddrBT->addressFamily);
 					CBTHostDlg::BTAddressToString((BLUETOOTH_ADDRESS*)&pSockAddrBT->btAddr, &bstrAddress);
-					ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults2->lpszServiceInstanceName, (LPCWSTR)bstrAddress);
+					ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults->lpszServiceInstanceName, (LPCWSTR)bstrAddress);
 
 					// MUSS die gleiche address/ergebnis haben wie oben nur MIT Port
 					CBTHostDlg::BTAddressToString((PSOCKADDR_BTH)addrService->RemoteAddr.lpSockaddr, &bstrAddress);
-					ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults2->lpszServiceInstanceName, (LPCWSTR)bstrAddress);
+					ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults->lpszServiceInstanceName, (LPCWSTR)bstrAddress);
 				}
 
 				/*
