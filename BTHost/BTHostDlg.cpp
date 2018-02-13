@@ -71,6 +71,11 @@ BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
 	ON_MESSAGE(WM_USER_RXSINGLEBYTE, OnRXSingleByte)
 END_MESSAGE_MAP()
 
+/*
+* siehe auch:
+*   C:\Users\psi\Source\Repos\KRT2Mngr\BTHost\BTHost.htm(121): window.external.txBytes()
+*   C:\Users\psi\Source\Repos\KRT2Mngr\winExtByteLevel.js(57)
+*/
 BEGIN_DISPATCH_MAP(CBTHostDlg, CDHtmlDialog)
 	DISP_FUNCTION(CBTHostDlg, "txBytes", txBytes, VT_EMPTY, VTS_BSTR)
 END_DISPATCH_MAP()
@@ -312,6 +317,12 @@ LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 	_ASSERT(m_dwThreadAffinity == ::GetCurrentThreadId());
 	_ASSERT(1 == HIWORD(wParam));
 	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() msg value: %hc, length: %hu\n"), LOWORD(wParam), HIWORD(wParam));
+
+	/*
+	* siehe auch:
+	*   C:\Users\psi\Source\Repos\KRT2Mngr\BTHost\BTHost.htm(78): function OnRXSingleByte(nByte)
+	*   C:\Users\psi\Source\Repos\KRT2Mngr\IByteLevel.js(7): function OnRXSingleByte(nByte)
+	*/
 	m_ddScript.Invoke1(_T("OnRXSingleByte"), &CComVariant(LOWORD(wParam)));
 
 	// read next / continue loop
