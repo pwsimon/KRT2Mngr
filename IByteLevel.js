@@ -5,8 +5,19 @@
 * mit der weiterentwicklung beziehen wir den (aktuell globalen g_cmdParser) durch ein require()
 */
 function OnRXSingleByte(nByte) {
-	// document.getElementById('lblCommand').innerText = String.fromCharCode(nByte);
-	if ("S".charCodeAt(0) == nByte) {
+	/*
+	* document.getElementById('lblCommand').innerText = String.fromCharCode(nByte);
+	* solange ein parser (g_cmdParser) active ist muss dieser die hoechste prioritaet haben
+	*/
+	if (g_cmdParser) {
+		if (g_cmdParser.Drive(nByte)) {
+			// console.log("finished:", g_cmdParser.rgCmd.sCmd);
+			document.getElementById('lblCommand').innerText = "finished: " + g_cmdParser.rgCmd.sCmd;
+			g_cmdParser = null; // enter IDLE
+		}
+	}
+
+	else if ("S".charCodeAt(0) == nByte) {
 		console.log("ping");
 		document.getElementById('lblCommand').innerText = "ping";
 	}
@@ -29,15 +40,7 @@ function OnRXSingleByte(nByte) {
 	}
 
 	else {
-		if (g_cmdParser) {
-			if (g_cmdParser.Drive(nByte)) {
-				// console.log("finished:", g_cmdParser.rgCmd.sCmd);
-				document.getElementById('lblCommand').innerText = "finished: " + g_cmdParser.rgCmd.sCmd;
-				g_cmdParser = null; // enter IDLE
-			}
-		}
-		else
-			g_cmdParser = new CommandParser(nByte);
+		console.log("invalid sequence");
 	}
 }
 
