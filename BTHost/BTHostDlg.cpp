@@ -352,8 +352,8 @@ HRESULT CBTHostDlg::OnDiscoverService(IHTMLElement* /*pElement*/)
 	* GT-I9300       => L"(0C:14:20:4A:1F:AD)"
 	* Blackwire C720 => L"(48:C1:AC:4A:C6:93)"
 	*/
-	HRESULT hr = enumBTServices(L"(98:D3:31:FD:5A:F2)", SerialPortServiceClass_UUID); // SerialPortServiceClass_UUID, OBEXObjectPushServiceClass_UUID
-	hr = enumBTServices(L"(0C:14:20:4A:1F:AD)", OBEXObjectPushServiceClass_UUID); // L2CAP_PROTOCOL_UUID
+	HRESULT hr = enumBTServices(L"(98:D3:31:FD:5A:F2)", SerialPortServiceClass_UUID); // SerialPortServiceClass_UUID
+	// hr = enumBTServices(L"(0C:14:20:4A:1F:AD)", L2CAP_PROTOCOL_UUID); // OBEXObjectPushServiceClass_UUID
 	return hr;
 }
 
@@ -728,14 +728,23 @@ HRESULT CBTHostDlg::enumBTServices(
 				*/
 				// (BLUETOOTH_ADDRESS*)&lpAddress->btAddr
 				{
-					PSOCKADDR_BTH pSockAddrBT = (PSOCKADDR_BTH)addrService->RemoteAddr.lpSockaddr;
+					/* PSOCKADDR_BTH pSockAddrBT = (PSOCKADDR_BTH)addrService->RemoteAddr.lpSockaddr;
 					_ASSERT(AF_BTH == pSockAddrBT->addressFamily);
 					CBTHostDlg::BTAddressToString((BLUETOOTH_ADDRESS*)&pSockAddrBT->btAddr, &bstrAddress);
-					ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults->lpszServiceInstanceName, (LPCWSTR)bstrAddress);
+					ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults->lpszServiceInstanceName, (LPCWSTR)bstrAddress); */
 
-					// MUSS die gleiche address/ergebnis haben wie oben nur MIT Port
+					/* MUSS die gleiche address/ergebnis haben wie oben nur MIT Port
 					CBTHostDlg::BTAddressToString((PSOCKADDR_BTH)addrService->RemoteAddr.lpSockaddr, &bstrAddress);
-					ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults->lpszServiceInstanceName, (LPCWSTR)bstrAddress);
+					ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults->lpszServiceInstanceName, (LPCWSTR)bstrAddress); */
+
+					// MUSS die gleiche address/ergebnis haben wie oben nur API
+					WSAPROTOCOL_INFO ProtocolInfo;
+					WCHAR szAddress[0x100];
+					DWORD dwAddressLen = _countof(szAddress);
+					if(0 != ::WSAAddressToString(addrService->RemoteAddr.lpSockaddr, sizeof(SOCKADDR_BTH), NULL /* &ProtocolInfo */, szAddress, &dwAddressLen))
+						CBTHostDlg::ShowWSALastError(_T("WSAAddressToString (service discovery)"));
+					else
+						ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls, %ls (service)\n"), pResults->lpszServiceInstanceName, szAddress);
 				}
 
 				/*
