@@ -496,7 +496,7 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 * caller is responsible to free *ppAddrSimulator
 */
 /*static*/ HRESULT CBTHostDlg::NameToTCPAddr(
-	const LPWSTR pszRemoteName,            // IN
+	const LPWSTR      pszRemoteName,        // IN
 	size_t&           sAddrSimulatorLength, // OUT
 	struct sockaddr** ppAddrSimulator)
 {
@@ -642,7 +642,11 @@ HRESULT CBTHostDlg::enumBTDevices(GUID serviceClass)
 	if (0 != result)
 		CBTHostDlg::ShowWSALastError(_T("WSALookupServiceBegin (device discovery)"));
 
-	//Initialisation succeded, start looking for devices
+	/*
+	* Initialisation succeded, start looking for devices
+	* do not use fixed sized (hard-coded) buffers!
+	* see NameToBthAddr() for correct allocation
+	*/
 	BYTE buffer[4096];
 	memset(buffer, 0, sizeof(buffer));
 	DWORD bufferLength = sizeof(buffer);
@@ -770,30 +774,29 @@ HRESULT CBTHostDlg::enumBTServices(
 * if required by performing inquiry with remote name requests.
 * This function demonstrates device inquiry, with optional LUP flags.
 */
-#define CXN_TEST_DATA_STRING              (L"~!@#$%^&*()-_=+?<>1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") 
-#define CXN_TRANSFER_DATA_LENGTH          (sizeof(CXN_TEST_DATA_STRING)) 
-
-#define CXN_BDADDR_STR_LEN                17   // 6 two-digit hex values plus 5 colons 
 #define CXN_MAX_INQUIRY_RETRY             3
 #define CXN_DELAY_NEXT_INQUIRY            15
-#define CXN_ERROR                         1
-#define CXN_DEFAULT_LISTEN_BACKLOG        4
 /*static*/ HRESULT CBTHostDlg::NameToBthAddr(
-	_In_ const LPWSTR pszRemoteName,
-	_Out_ PSOCKADDR_BTH pRemoteBtAddr)
+	const LPWSTR pszRemoteName,
+	PSOCKADDR_BTH pRemoteBtAddr)
 {
 	HRESULT hrResult = NOERROR;
-	BOOL    bContinueLookup = FALSE, bRemoteDeviceFound = FALSE;
-	ULONG   ulFlags = 0, ulPQSSize = sizeof(WSAQUERYSET);
+	BOOL    bContinueLookup = FALSE;
+	BOOL    bRemoteDeviceFound = FALSE;
+	ULONG   ulFlags = 0;
+	ULONG   ulPQSSize = sizeof(WSAQUERYSET);
 	HANDLE  hLookup = NULL;
 
 	::ZeroMemory(pRemoteBtAddr, sizeof(*pRemoteBtAddr));
 
-	// HeapAlloc function, https://msdn.microsoft.com/de-de/library/windows/desktop/aa366597(v=vs.85).aspx
-	// If the function fails, it does not call SetLastError. An application cannot call GetLastError for extended error information.
-	PWSAQUERYSET pWSAQuerySet = (PWSAQUERYSET)::HeapAlloc(GetProcessHeap(),
-		HEAP_ZERO_MEMORY,
-		ulPQSSize);
+	/*
+	* der hier allozierte speicher ist i.d.R. zu klein. (kann man sich gleich sparen)
+	* wir fangen den fehler ab (WSAEFAULT == ::WSALookupServiceNext) und allozieren die gewuenschte groesse
+	*
+	* HeapAlloc function, https://msdn.microsoft.com/de-de/library/windows/desktop/aa366597(v=vs.85).aspx
+	* If the function fails, it does not call SetLastError. An application cannot call GetLastError for extended error information.
+	*/
+	PWSAQUERYSET pWSAQuerySet = (PWSAQUERYSET)::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, ulPQSSize);
 	if (NULL == pWSAQuerySet)
 		return E_OUTOFMEMORY;
 
@@ -822,10 +825,10 @@ HRESULT CBTHostDlg::enumBTServices(
 			ulFlags |= LUP_RETURN_ADDR;
 
 			if (0 == iRetryCount)
-			{
 				ATLTRACE2(atlTraceGeneral, 0, _T("*INFO* | Inquiring device from cache...\n"));
-			}
-			else {
+
+			else
+			{
 				//
 				// Flush the device cache for all inquiries, except for the first inquiry
 				//
@@ -843,15 +846,12 @@ HRESULT CBTHostDlg::enumBTServices(
 				// name requests have completed.
 				//
 				ATLTRACE2(atlTraceGeneral, 0, _T("*INFO* | Unable to find device.  Waiting for %d seconds before re-inquiry...\n"), CXN_DELAY_NEXT_INQUIRY);
-				Sleep(CXN_DELAY_NEXT_INQUIRY * 1000);
+				::Sleep(CXN_DELAY_NEXT_INQUIRY * 1000);
 
 				ATLTRACE2(atlTraceGeneral, 0, _T("*INFO* | Inquiring device ...\n"));
 			}
 
-			//
 			// Start the lookup service
-			//
-			hrResult = NOERROR;
 			hLookup = 0;
 			bContinueLookup = FALSE;
 			::ZeroMemory(pWSAQuerySet, ulPQSSize);
@@ -859,19 +859,19 @@ HRESULT CBTHostDlg::enumBTServices(
 			pWSAQuerySet->dwSize = sizeof(WSAQUERYSET);
 			hrResult = ::WSALookupServiceBegin(pWSAQuerySet, ulFlags, &hLookup);
 
-			//
 			// Even if we have an error, we want to continue until we
 			// reach the CXN_MAX_INQUIRY_RETRY
-			//
-			if ((NOERROR == hrResult) && (NULL != hLookup)) {
+			if ((NOERROR == hrResult) && (NULL != hLookup))
 				bContinueLookup = TRUE;
-			}
-			else if (0 < iRetryCount) {
+
+			else if (0 < iRetryCount)
+			{
 				ATLTRACE2(atlTraceGeneral, 0, _T("=CRITICAL= | WSALookupServiceBegin() failed with error code %d, WSAGetLastError = %d\n"), hrResult, ::WSAGetLastError());
 				break;
 			}
 
-			while (bContinueLookup) {
+			while (bContinueLookup)
+			{
 				//
 				// Get information about next bluetooth device
 				//
@@ -882,53 +882,55 @@ HRESULT CBTHostDlg::enumBTServices(
 				// ZeroMemory(pWSAQuerySet, ulPQSSize);
 				// pWSAQuerySet->dwNameSpace = NS_BTH;
 				// pWSAQuerySet->dwSize = sizeof(WSAQUERYSET);
-				if (NO_ERROR == ::WSALookupServiceNext(hLookup,
-					ulFlags,
-					&ulPQSSize,
-					pWSAQuerySet)) {
+				if (NO_ERROR == ::WSALookupServiceNext(hLookup, ulFlags, &ulPQSSize, pWSAQuerySet))
+				{
+					//
+					// Compare the name to see if this is the device we are looking for.
+					//
+					if ((pWSAQuerySet->lpszServiceInstanceName != NULL) && (0 == _wcsicmp(pWSAQuerySet->lpszServiceInstanceName, pszRemoteName)))
+					{
+						//
+						// Found a remote bluetooth device with matching name.
+						// Get the address of the device and exit the lookup.
+						//
+						CComBSTR bstrAddress;
+						CBTHostDlg::BTAddressToString((PSOCKADDR_BTH)pWSAQuerySet->lpcsaBuffer->RemoteAddr.lpSockaddr, &bstrAddress);
+						ATLTRACE2(atlTraceGeneral, 0, _T("Address for: %ls is: %ls\n"), pszRemoteName, (LPCWSTR)bstrAddress);
 
-					// 
-					// Compare the name to see if this is the device we are looking for. 
-					// 
-					if ((pWSAQuerySet->lpszServiceInstanceName != NULL) &&
-						(0 == _wcsicmp(pWSAQuerySet->lpszServiceInstanceName, pszRemoteName))) {
-						//
-						// Found a remote bluetooth device with matching name. 
-						// Get the address of the device and exit the lookup. 
-						//
-						::CopyMemory(pRemoteBtAddr,
-							(PSOCKADDR_BTH)pWSAQuerySet->lpcsaBuffer->RemoteAddr.lpSockaddr,
-							sizeof(*pRemoteBtAddr));
+						::CopyMemory(pRemoteBtAddr, (PSOCKADDR_BTH)pWSAQuerySet->lpcsaBuffer->RemoteAddr.lpSockaddr, sizeof(*pRemoteBtAddr));
 						bRemoteDeviceFound = TRUE;
 						bContinueLookup = FALSE;
 					}
 				}
-				else {
+				else
+				{
 					hrResult = ::WSAGetLastError();
 					if (WSA_E_NO_MORE == hrResult)
 					{
-						// No more data 
-						// No more devices found.  Exit the lookup. 
+						// No more data
+						// No more devices found.  Exit the lookup.
 						bContinueLookup = FALSE;
 					}
-					else if (WSAEFAULT == hrResult) {
+
+					else if (WSAEFAULT == hrResult)
+					{
 						//
 						// The buffer for QUERYSET was insufficient.
 						// In such case 3rd parameter "ulPQSSize" of function "WSALookupServiceNext()" receives
 						// the required size.  So we can use this parameter to reallocate memory for QUERYSET.
 						//
 						::HeapFree(::GetProcessHeap(), 0, pWSAQuerySet);
-						pWSAQuerySet = (PWSAQUERYSET)::HeapAlloc(::GetProcessHeap(),
-							HEAP_ZERO_MEMORY,
-							ulPQSSize);
-						if (NULL == pWSAQuerySet) {
-							wprintf(L"!ERROR! | Unable to allocate memory for WSAQERYSET\n");
+						pWSAQuerySet = (PWSAQUERYSET)::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, ulPQSSize);
+						if (NULL == pWSAQuerySet)
+						{
+							ATLTRACE2(atlTraceGeneral, 0, _T("!ERROR! | Unable to allocate memory for WSAQERYSET\n"));
 							hrResult = STATUS_NO_MEMORY;
 							bContinueLookup = FALSE;
 						}
 					}
-					else {
-						wprintf(L"=CRITICAL= | WSALookupServiceNext() failed with error code %d\n", hrResult);
+					else
+					{
+						ATLTRACE2(atlTraceGeneral, 0, _T("=CRITICAL= | WSALookupServiceNext() failed with error code %d\n"), hrResult);
 						bContinueLookup = FALSE;
 					}
 				}
@@ -939,23 +941,21 @@ HRESULT CBTHostDlg::enumBTServices(
 			//
 			::WSALookupServiceEnd(hLookup);
 
-			if (STATUS_NO_MEMORY == hrResult) {
+			if (STATUS_NO_MEMORY == hrResult)
 				break;
-			}
 		}
 	}
 
-	if (NULL != pWSAQuerySet) {
+	if (NULL != pWSAQuerySet)
+	{
 		::HeapFree(::GetProcessHeap(), 0, pWSAQuerySet);
 		pWSAQuerySet = NULL;
 	}
 
-	if (bRemoteDeviceFound) {
+	if (bRemoteDeviceFound)
 		hrResult = NOERROR;
-	}
-	else {
+	else
 		hrResult = E_INVALIDARG;
-	}
 
 	return hrResult;
 }
