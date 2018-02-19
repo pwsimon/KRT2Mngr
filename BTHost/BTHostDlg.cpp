@@ -106,6 +106,7 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	m_addrKRT2.btAddr = ((ULONGLONG)0x000098d331fd5af2); // KRT21885, Dev B => (98:D3:31:FD:5A:F2)
 	m_addrKRT2.serviceClassId = CLSID_NULL; // SerialPortServiceClass_UUID
 	m_addrKRT2.port = 1UL;
+	m_bstrInputBT = KRT2INPUT_BT;
 #endif
 
 #ifdef KRT2INPUT_PORT
@@ -148,8 +149,20 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	*     HKEY_CURRENT_USER\SOFTWARE\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\COMHost.exe (REG_DWORD) 11000
 	*/
 	// m_nHtmlResID = 0;
-	// m_strCurrentUrl = _T("http://localhost/krt2mngr/comhost/comhost.htm"); // ohne fehler
+	// m_strCurrentUrl = _T("http://localhost/krt2mngr/bthost/bthost.htm"); // ohne fehler
 	m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
+	CCommandLineInfo cmdLI;
+	theApp.ParseCommandLine(cmdLI);
+	if (CCommandLineInfo::FileOpen == cmdLI.m_nShellCommand)
+	{
+		/*
+		* wir steuern/configurieren hier primaer den "ServiceInstanceName"
+		* vgl. COMHost da steuern/configurieren wir den "COMPort"
+		m_strCurrentUrl = cmdLI.m_strFileName;
+		*/
+
+		m_bstrInputBT = cmdLI.m_strFileName;
+	}
 	CDHtmlDialog::OnInitDialog();
 	SetExternalDispatch((LPDISPATCH)GetInterface(&IID_IDispatch));
 
@@ -468,23 +481,31 @@ HRESULT CBTHostDlg::enumBTDevices(HANDLE hRadio)
 
 HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 {
-	CBTHostDlg::m_socketLocal = ::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
-	if (INVALID_SOCKET != CBTHostDlg::m_socketLocal)
+	SOCKET socketLocal = ::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
+	if (INVALID_SOCKET != socketLocal)
 	{
-		if (INVALID_SOCKET != ::connect(CBTHostDlg::m_socketLocal, (struct sockaddr *) pRemoteAddr, sizeof(SOCKADDR_BTH)))
+		if (INVALID_SOCKET != ::connect(socketLocal, (struct sockaddr *) pRemoteAddr, sizeof(SOCKADDR_BTH)))
 		{
 			/*
 			* wir lesen IMMER nonblocking.
 			* entweder IOALERTABLE (OVERLAPPED_COMPLETION_ROUTINE) ODER
 			* READ_THREAD (GetOverlappedResult)
 			*/
+
 #ifdef IOALERTABLE
 			CBTHostDlg::InitCompletionRoutine();
 			CBTHostDlg::QueueRead();
 #endif
+
+			CBTHostDlg::m_socketLocal = socketLocal;
 		}
 		else
-			CBTHostDlg::ShowWSALastError(_T("::connect(m_socketLocal, ...)"));
+		{
+			CBTHostDlg::ShowWSALastError(_T("::connect(socketLocal, ...)"));
+
+			::closesocket(socketLocal);
+			socketLocal = INVALID_SOCKET;
+		}
 	}
 	else
 		CBTHostDlg::ShowWSALastError(_T("::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM)"));
@@ -560,10 +581,10 @@ HRESULT CBTHostDlg::Connect(
 	* der call MUSS sicherstellen das die "addrServer" auch wirklich eine IPv4 (AF_INET) enthaelt
 	* SOCK_STREAM, A socket type that provides sequenced, reliable, two-way, connection-based byte streams with an OOB data transmission mechanism.
 	*/
-	CBTHostDlg::m_socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (INVALID_SOCKET != CBTHostDlg::m_socketLocal)
+	SOCKET socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (INVALID_SOCKET != socketLocal)
 	{
-		if (INVALID_SOCKET != ::connect(CBTHostDlg::m_socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
+		if (INVALID_SOCKET != ::connect(socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
 		{
 			/*
 			* wir lesen IMMER nonblocking.
@@ -581,9 +602,16 @@ HRESULT CBTHostDlg::Connect(
 			_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hEvtTerminate);
 			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::BTReadThread, &m_ReadThreadArgs, 0, NULL);
 #endif
+
+			CBTHostDlg::m_socketLocal = socketLocal;
 		}
 		else
-			CBTHostDlg::ShowWSALastError(_T("::connect(m_socketLocal, ...)"));
+		{
+			CBTHostDlg::ShowWSALastError(_T("::connect(socketLocal, ...)"));
+
+			::closesocket(socketLocal);
+			socketLocal = INVALID_SOCKET;
+		}
 	}
 	else
 		CBTHostDlg::ShowWSALastError(_T("::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)"));

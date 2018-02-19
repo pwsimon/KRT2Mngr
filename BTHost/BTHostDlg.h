@@ -74,6 +74,7 @@ protected:
 	void txBytes(BSTR bstrBytes);
 
 private:
+	CComBSTR m_bstrInputBT;
 	static SOCKET m_socketLocal;
 	CComDispatchDriver m_ddScript;
 	HRESULT enumBTRadio(HANDLE& hRadio);

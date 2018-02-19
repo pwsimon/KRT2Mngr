@@ -102,6 +102,9 @@ CCOMHostDlg::CCOMHostDlg(CWnd* pParent /*=NULL*/)
 #ifdef KRT2OUTPUT
 	m_hFileWrite = INVALID_HANDLE_VALUE;
 #endif
+
+	m_bstrCOMPort = KRT2COMPORT;
+
 	::ZeroMemory(&m_OverlappedWrite, sizeof(OVERLAPPED));
 	m_OverlappedWrite.hEvent = ::CreateEvent(NULL, TRUE, FALSE, NULL); // manual reset is required for overlapped I/O
 	m_OverlappedWrite.Internal;
@@ -136,7 +139,15 @@ void CCOMHostDlg::DoDataExchange(CDataExchange* pDX)
 	CCommandLineInfo cmdLI;
 	theApp.ParseCommandLine(cmdLI);
 	if (CCommandLineInfo::FileOpen == cmdLI.m_nShellCommand)
+	{
+		/*
+		* wir steuern/configurieren hier primaer den "ServiceInstanceName"
+		* vgl. COMHost da steuern/configurieren wir den "COMPort"
 		m_strCurrentUrl = cmdLI.m_strFileName;
+		*/
+
+		m_bstrCOMPort = cmdLI.m_strFileName;
+	}
 	CDHtmlDialog::OnInitDialog();
 	// Navigate(_T("http://localhost/krt2mngr/sevenseg.html"));
 	SetExternalDispatch((LPDISPATCH) GetInterface(&IID_IDispatch));
@@ -393,9 +404,9 @@ HRESULT CCOMHostDlg::InitInputOutput(IHTMLElement*)
 
 #ifdef KRT2COMPORT
 	_ASSERT(INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort);
-	m_ReadThreadArgs.hCOMPort = ::CreateFile(KRT2COMPORT, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+	m_ReadThreadArgs.hCOMPort = ::CreateFile(m_bstrCOMPort, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
 	if (INVALID_HANDLE_VALUE == m_ReadThreadArgs.hCOMPort)
-		CCOMHostDlg::ShowLastError(_T("::CreateFile(") KRT2COMPORT _T(", GENERIC_READ | GENERIC_WRITE, ...)"));
+		CCOMHostDlg::ShowLastError(_T("::CreateFile(..., GENERIC_READ | GENERIC_WRITE, ...)"));
 #endif
 
 	if (INVALID_HANDLE_VALUE != m_ReadThreadArgs.hCOMPort)

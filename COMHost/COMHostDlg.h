@@ -25,6 +25,7 @@ protected:
 #ifdef KRT2OUTPUT
 	HANDLE m_hFileWrite;
 #endif
+	CComBSTR m_bstrCOMPort;
 	OVERLAPPED m_OverlappedWrite;
 	struct _ReadThreadArg {
 		HWND hwndMainDlg;
