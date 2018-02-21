@@ -62,7 +62,7 @@ END_MESSAGE_MAP()
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
 	// DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnSendPing) // soft buttons
 	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnDiscoverService)
-	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
+	// DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
 END_DHTML_EVENT_MAP()
 
 BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
@@ -203,7 +203,8 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	else
 		CBTHostDlg::ShowWSALastError(_T("WSAStartup"));
 
-	return TRUE;  // return TRUE  unless you set the focus to a control
+	OnConnect(NULL);
+	return TRUE; // return TRUE  unless you set the focus to a control
 }
 
 /*virtual*/ void CBTHostDlg::OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl)
@@ -216,7 +217,7 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	// SetElementText(_T("btnSoft1"), _T("SendPing")); // OnSendPing
 	// SetElementText(_T("btnSoft1"), _T("DiscoverDevice")); // OnDiscoverDevice
 	SetElementText(_T("btnSoft1"), _T("DiscoverService")); // DiscoverService
-	SetElementText(_T("btnSoft2"), _T("Connect")); // OnConnect
+	// SetElementText(_T("btnSoft2"), _T("Connect")); // OnConnect
 }
 
 /*virtual*/ BOOL CBTHostDlg::IsExternalDispatchSafe()
@@ -403,10 +404,10 @@ HRESULT CBTHostDlg::OnConnect(IHTMLElement* /*pElement*/)
 #endif
 
 #ifdef KRT2INPUT_BT
-	hr = CBTHostDlg::NameToBthAddr(KRT2INPUT_BT, &m_addrKRT2);
+	hr = CBTHostDlg::NameToBthAddr(m_bstrInputBT, &m_addrKRT2);
 	if (SUCCEEDED(hr))
 	{
-		m_addrKRT2.port = 1UL;
+		m_addrKRT2.port = KRT2INPUT_PORT; // Port/Profile
 		Connect(&m_addrKRT2);
 	}
 #endif
@@ -495,6 +496,13 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 #ifdef IOALERTABLE
 			CBTHostDlg::InitCompletionRoutine();
 			CBTHostDlg::QueueRead();
+#endif
+
+#ifdef READ_THREAD
+			m_ReadThreadArgs.hwndMainDlg = m_hWnd;
+			m_ReadThreadArgs.socketLocal = socketLocal;
+			_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hEvtTerminate);
+			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::BTReadThread, &m_ReadThreadArgs, 0, NULL);
 #endif
 
 			CBTHostDlg::m_socketLocal = socketLocal;
@@ -598,7 +606,7 @@ HRESULT CBTHostDlg::Connect(
 
 #ifdef READ_THREAD
 			m_ReadThreadArgs.hwndMainDlg = m_hWnd;
-			m_ReadThreadArgs.socketLocal = CBTHostDlg::m_socketLocal;
+			m_ReadThreadArgs.socketLocal = socketLocal;
 			_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hEvtTerminate);
 			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::BTReadThread, &m_ReadThreadArgs, 0, NULL);
 #endif

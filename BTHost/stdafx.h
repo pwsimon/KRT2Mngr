@@ -34,7 +34,7 @@
 #include <ws2bth.h>
 #include <ws2tcpip.h>
 // #define KRT2INPUT_SERVER   _T("localhost")
-// #define KRT2INPUT_PORT     27015 // 80, for use with simulator 27015
+#define KRT2INPUT_PORT     1 // TCPEchoServer 27015, 1 Bluetooth SerialPort, 80 any HTTP server
 // #define KRT2INPUT_PATH     "/krt2mngr/comhost/krt2input.bin"
 // #define KRT2INPUT_BT       _T("GT-I9300") // 0C:14:20:4A:1F:AD
 #define KRT2INPUT_BT       _T("KRT21885") // 98:D3:31:FD:5A:F2
