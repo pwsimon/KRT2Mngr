@@ -61,8 +61,9 @@ END_MESSAGE_MAP()
 
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
 	// DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnSendPing) // soft buttons
-	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnDiscoverService)
-	// DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
+	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnDiscoverDevice)
+	// DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnDiscoverService)
+	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
 END_DHTML_EVENT_MAP()
 
 BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
@@ -203,7 +204,7 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	else
 		CBTHostDlg::ShowWSALastError(_T("WSAStartup"));
 
-	OnConnect(NULL);
+	// OnConnect(NULL);
 	return TRUE; // return TRUE  unless you set the focus to a control
 }
 
@@ -215,9 +216,8 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 
 	// SetElementProperty(_T("btnSoft1"), DISPID_VALUE, &CComVariant(L"Check hurtz")); // for <input> elements
 	// SetElementText(_T("btnSoft1"), _T("SendPing")); // OnSendPing
-	// SetElementText(_T("btnSoft1"), _T("DiscoverDevice")); // OnDiscoverDevice
-	SetElementText(_T("btnSoft1"), _T("DiscoverService")); // DiscoverService
-	// SetElementText(_T("btnSoft2"), _T("Connect")); // OnConnect
+	SetElementText(_T("btnSoft1"), _T("DiscoverDevice")); // OnDiscoverDevice
+	SetElementText(_T("btnSoft2"), _T("connect")); // OnConnect
 }
 
 /*virtual*/ BOOL CBTHostDlg::IsExternalDispatchSafe()
@@ -353,8 +353,8 @@ HRESULT CBTHostDlg::OnDiscoverDevice(IHTMLElement* /*pElement*/)
 {
 	HRESULT hr = NOERROR;
 	HANDLE hRadio = NULL;
-	// hr = enumBTRadio(hRadio);
-	hr = enumBTDevices(SerialPortServiceClass_UUID);
+	hr = enumBTRadio(hRadio);
+	// hr = enumBTDevices(SerialPortServiceClass_UUID);
 
 	return S_OK;
 }
@@ -423,23 +423,32 @@ HRESULT CBTHostDlg::enumBTRadio(HANDLE& hRadio)
 	findradioParams.dwSize = sizeof(findradioParams);
 	HANDLE _hRadio = NULL;
 	HBLUETOOTH_RADIO_FIND hbtrf = ::BluetoothFindFirstRadio(&findradioParams, &_hRadio);
-	BOOL bRetC = NULL == hbtrf ? FALSE : TRUE;
-	while (bRetC)
+	if (NULL != hbtrf)
 	{
-		BLUETOOTH_RADIO_INFO RadioInfo;
-		::ZeroMemory(&RadioInfo, sizeof(RadioInfo));
-		RadioInfo.dwSize = sizeof(RadioInfo);
-		DWORD dwRetC = ::BluetoothGetRadioInfo(_hRadio, &RadioInfo);
+		BOOL bRetC = TRUE;
+		while (bRetC)
+		{
+			BLUETOOTH_RADIO_INFO RadioInfo;
+			::ZeroMemory(&RadioInfo, sizeof(RadioInfo));
+			RadioInfo.dwSize = sizeof(RadioInfo);
+			DWORD dwRetC = ::BluetoothGetRadioInfo(_hRadio, &RadioInfo);
 
-		// ::MessageBox(NULL, RadioInfo.szName, _T("BluetoothFindXXXRadio"), MB_OK);
-		ATLTRACE2(atlTraceGeneral, 0, _T("BluetoothFindXXXRadio: %s\n"), RadioInfo.szName);
-		hr = enumBTDevices(_hRadio);
-		bRetC = ::BluetoothFindNextRadio(hbtrf, &_hRadio);
-		::CloseHandle(_hRadio);
+			// ::MessageBox(NULL, RadioInfo.szName, _T("BluetoothFindXXXRadio"), MB_OK);
+			ATLTRACE2(atlTraceGeneral, 0, _T("BluetoothFindXXXRadio: %s\n"), RadioInfo.szName);
+			hr = enumBTDevices(_hRadio);
+
+			bRetC = ::BluetoothFindNextRadio(hbtrf, &_hRadio);
+			::CloseHandle(_hRadio);
+		}
+
+		if (hbtrf)
+			::BluetoothFindRadioClose(hbtrf);
 	}
-
-	if (hbtrf)
-		::BluetoothFindRadioClose(hbtrf);
+	else
+	{
+		// ::MessageBox(NULL, _T("No Radio found"), _T("::BluetoothFindFirstRadio"), MB_OK);
+		ATLTRACE2(atlTraceGeneral, 0, _T("::BluetoothFindFirstRadio() returned: No Radio found\n"));
+	}
 
 	return hr;
 }
@@ -826,7 +835,8 @@ HRESULT CBTHostDlg::enumBTServices(
 	::ZeroMemory(pRemoteBtAddr, sizeof(*pRemoteBtAddr));
 
 	/*
-	* der hier allozierte speicher ist i.d.R. zu klein. (kann man sich gleich sparen)
+	* der hier allozierte speicher ist fuer ::WSALookupServiceNext() i.d.R. zu klein. (kann man sich gleich sparen)
+	* fuer das ::WSALookupServiceBegin() ist der speicher ausreichend (es wird ja kein device zurueckgeliefert)
 	* wir fangen den fehler ab (WSAEFAULT == ::WSALookupServiceNext) und allozieren die gewuenschte groesse
 	*
 	* HeapAlloc function, https://msdn.microsoft.com/de-de/library/windows/desktop/aa366597(v=vs.85).aspx
@@ -894,6 +904,16 @@ HRESULT CBTHostDlg::enumBTServices(
 			pWSAQuerySet->dwNameSpace = NS_BTH;
 			pWSAQuerySet->dwSize = sizeof(WSAQUERYSET);
 			hrResult = ::WSALookupServiceBegin(pWSAQuerySet, ulFlags, &hLookup);
+			if (0 != hrResult)
+			{
+				const DWORD dwLastError = CBTHostDlg::ShowWSALastError(_T("WSALookupServiceBegin (device discovery)"));
+				switch (dwLastError)
+				{
+					case WSASERVICE_NOT_FOUND:
+						// propably no BluetoothRadio installed/plugedin
+						break;
+				}
+			}
 
 			// Even if we have an error, we want to continue until we
 			// reach the CXN_MAX_INQUIRY_RETRY
@@ -1043,7 +1063,7 @@ HRESULT CBTHostDlg::enumBTServices(
 	return NOERROR;
 }
 
-/*static*/ HRESULT CBTHostDlg::ShowWSALastError(LPCTSTR szCaption)
+/*static*/ DWORD CBTHostDlg::ShowWSALastError(LPCTSTR szCaption)
 {
 	const DWORD dwMessageId(::WSAGetLastError());
 	CString strDesc;
@@ -1057,7 +1077,7 @@ HRESULT CBTHostDlg::enumBTServices(
 	CString strMsg;
 	strMsg.Format(_T("%s, returned: 0x%.8x"), (LPCTSTR) strDesc, dwMessageId);
 	::MessageBox(NULL, strMsg, szCaption, MB_OK);
-	return NOERROR;
+	return dwMessageId;
 }
 
 #ifdef READ_THREAD

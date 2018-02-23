@@ -88,5 +88,5 @@ private:
 	static HRESULT NameToTCPAddr(const LPWSTR pszRemoteName, size_t& sAddrSimulatorLength, struct sockaddr** ppAddrSimulator);
 	static HRESULT BTAddressToString(BLUETOOTH_ADDRESS* pBTAddr, BSTR* pbstrAddress);
 	static HRESULT BTAddressToString(PSOCKADDR_BTH lpAddress, BSTR* pbstrAddress);
-	static HRESULT ShowWSALastError(LPCTSTR szCaption);
+	static DWORD ShowWSALastError(LPCTSTR szCaption);
 };
