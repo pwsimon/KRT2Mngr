@@ -381,7 +381,9 @@ HRESULT CBTHostDlg::OnBtnSoft1(IHTMLElement* /*pElement*/)
 #endif
 
 #ifdef BTNSOFT1_DISCOVERDEVICE
-	hr = enumBTDevices(SerialPortServiceClass_UUID);
+	// hr = enumBTDevices(RFCOMM_PROTOCOL_UUID);
+	// hr = enumBTDevices(SerialPortServiceClass_UUID);
+	hr = enumBTDevices(CLSID_NULL);
 #endif
 
 #ifdef BTNSOFT1_DISCOVERSERVICE
@@ -396,7 +398,7 @@ HRESULT CBTHostDlg::OnBtnSoft2(IHTMLElement* /*pElement*/)
 	HRESULT hr = NOERROR;
 
 #ifdef BTNSOFT2_CONNECT
-	hr = enumBTDevices(SerialPortServiceClass_UUID);
+	hr = Connect();
 #endif
 
 #ifdef BTNSOFT2_KRT2PING
@@ -530,6 +532,12 @@ HRESULT CBTHostDlg::enumProtocols()
 	return NOERROR;
 }
 
+/*
+* AdpterListe:
+* - Broadcom, Broadcom BCM20702 Bluetooth 4.0 USB Device          => aktuell der beste
+* - LogiLink, Bluetooth 2.0 USB Device                            => OK
+* - SiteCom, CSR Harmony Wireless Software Stack Version 2.1.63.0 => 90% ausfall
+*/
 HRESULT CBTHostDlg::enumBTRadio(HANDLE& hRadio)
 {
 	HRESULT hr = E_FAIL;
@@ -838,7 +846,8 @@ HRESULT CBTHostDlg::enumBTDevices(GUID serviceClass)
 				CBTHostDlg::BTAddressToString((PSOCKADDR_BTH)addr->RemoteAddr.lpSockaddr, &bstrAddress);
 				ATLTRACE2(atlTraceGeneral, 0, _T("found: %ls (device)\n"), (LPCWSTR)bstrAddress);
 
-				enumBTServices(bstrAddress, serviceClass);
+				if (CLSID_NULL != serviceClass)
+					enumBTServices(bstrAddress, serviceClass);
 			}
 		}
 	}
