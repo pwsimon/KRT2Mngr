@@ -65,10 +65,12 @@ protected:
 
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
-	HRESULT OnDiscoverDevice(IHTMLElement *pElement);
-	HRESULT OnDiscoverService(IHTMLElement *pElement);
-	HRESULT OnSendPing(IHTMLElement* /*pElement*/);
-	HRESULT OnConnect(IHTMLElement *pElement);
+	HRESULT OnBtnSoft1(IHTMLElement* pElement);
+	HRESULT OnBtnSoft2(IHTMLElement *pElement);
+
+	HRESULT Connect();
+	HRESULT DiscoverService();
+	HRESULT SendPing();
 
 	DECLARE_DISPATCH_MAP() // public interface to HTML/GUI, DO NOT CHANGE
 	void txBytes(BSTR bstrBytes);
@@ -77,6 +79,7 @@ private:
 	CComBSTR m_bstrInputBT;
 	static SOCKET m_socketLocal;
 	CComDispatchDriver m_ddScript;
+	HRESULT enumProtocols();
 	HRESULT enumBTRadio(HANDLE& hRadio);
 	HRESULT enumBTDevices(HANDLE hRadio);
 	HRESULT enumBTDevices(GUID serviceClass);

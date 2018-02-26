@@ -60,10 +60,8 @@ END_MESSAGE_MAP()
 /*static*/ SOCKET CBTHostDlg::m_socketLocal = INVALID_SOCKET;
 
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
-	// DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnSendPing) // soft buttons
-	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnDiscoverDevice)
-	// DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnDiscoverService)
-	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnConnect)
+	DHTML_EVENT_ONCLICK(_T("btnSoft1"), OnBtnSoft1)
+	DHTML_EVENT_ONCLICK(_T("btnSoft2"), OnBtnSoft2)
 END_DHTML_EVENT_MAP()
 
 BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
@@ -204,7 +202,7 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	else
 		CBTHostDlg::ShowWSALastError(_T("WSAStartup"));
 
-	// OnConnect(NULL);
+	// Connect();
 	return TRUE; // return TRUE  unless you set the focus to a control
 }
 
@@ -215,9 +213,29 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	m_spHtmlDoc->get_Script(&m_ddScript.p);
 
 	// SetElementProperty(_T("btnSoft1"), DISPID_VALUE, &CComVariant(L"Check hurtz")); // for <input> elements
-	// SetElementText(_T("btnSoft1"), _T("SendPing")); // OnSendPing
-	SetElementText(_T("btnSoft1"), _T("DiscoverDevice")); // OnDiscoverDevice
-	SetElementText(_T("btnSoft2"), _T("connect")); // OnConnect
+#ifdef BTNSOFT1_ENUMPROTOCOLS
+	SetElementText(_T("btnSoft1"), _T("enumProtocols"));
+#endif
+
+#ifdef BTNSOFT1_ENUMRADIO
+	SetElementText(_T("btnSoft1"), _T("enumBTRadio"));
+#endif
+
+#ifdef BTNSOFT1_DISCOVERDEVICE
+	SetElementText(_T("btnSoft1"), _T("enumBTDevice"));
+#endif
+
+#ifdef BTNSOFT1_DISCOVERSERVICE
+	SetElementText(_T("btnSoft1"), _T("enumBTService"));
+#endif
+
+#ifdef BTNSOFT2_CONNECT
+	SetElementText(_T("btnSoft2"), _T("connect"));
+#endif
+
+#ifdef BTNSOFT2_KRT2PING
+	SetElementText(_T("btnSoft2"), _T("SendPing"));
+#endif
 }
 
 /*virtual*/ BOOL CBTHostDlg::IsExternalDispatchSafe()
@@ -349,17 +367,46 @@ LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
-HRESULT CBTHostDlg::OnDiscoverDevice(IHTMLElement* /*pElement*/)
+HRESULT CBTHostDlg::OnBtnSoft1(IHTMLElement* /*pElement*/)
 {
 	HRESULT hr = NOERROR;
+
+#ifdef BTNSOFT1_ENUMPROTOCOLS
+	hr = enumProtocols();
+#endif
+
+#ifdef BTNSOFT1_ENUMRADIO
 	HANDLE hRadio = NULL;
 	hr = enumBTRadio(hRadio);
-	// hr = enumBTDevices(SerialPortServiceClass_UUID);
+#endif
+
+#ifdef BTNSOFT1_DISCOVERDEVICE
+	hr = enumBTDevices(SerialPortServiceClass_UUID);
+#endif
+
+#ifdef BTNSOFT1_DISCOVERSERVICE
+	hr = DiscoverService();
+#endif
 
 	return S_OK;
 }
 
-HRESULT CBTHostDlg::OnDiscoverService(IHTMLElement* /*pElement*/)
+HRESULT CBTHostDlg::OnBtnSoft2(IHTMLElement* /*pElement*/)
+{
+	HRESULT hr = NOERROR;
+
+#ifdef BTNSOFT2_CONNECT
+	hr = enumBTDevices(SerialPortServiceClass_UUID);
+#endif
+
+#ifdef BTNSOFT2_KRT2PING
+	hr = SendPing();
+#endif
+
+	return hr;
+}
+
+HRESULT CBTHostDlg::DiscoverService()
 {
 	/*
 	* KRT21885       => L"(98:D3:31:FD:5A:F2)"
@@ -371,7 +418,7 @@ HRESULT CBTHostDlg::OnDiscoverService(IHTMLElement* /*pElement*/)
 	return hr;
 }
 
-HRESULT CBTHostDlg::OnSendPing(IHTMLElement* /*pElement*/)
+HRESULT CBTHostDlg::SendPing()
 {
 #ifdef KRT2INPUT_PATH
 	char* szHeader = "GET " KRT2INPUT_PATH " HTTP/1.1\r\nHost: ws-psi.estos.de\r\n\r\n";
@@ -389,7 +436,7 @@ HRESULT CBTHostDlg::OnSendPing(IHTMLElement* /*pElement*/)
 	return S_OK;
 }
 
-HRESULT CBTHostDlg::OnConnect(IHTMLElement* /*pElement*/)
+HRESULT CBTHostDlg::Connect()
 {
 	HRESULT hr = E_NOTIMPL;
 
@@ -413,6 +460,74 @@ HRESULT CBTHostDlg::OnConnect(IHTMLElement* /*pElement*/)
 #endif
 
 	return S_OK;
+}
+
+HRESULT CBTHostDlg::enumProtocols()
+{
+	DWORD dwBufferLen = 16384;
+	LPWSAPROTOCOL_INFO lpProtocolInfo = (LPWSAPROTOCOL_INFO)::HeapAlloc(::GetProcessHeap(), 0, dwBufferLen);
+	if (lpProtocolInfo == NULL)
+		return E_FAIL;
+
+	INT iNuminfo = ::WSAEnumProtocols(NULL, lpProtocolInfo, &dwBufferLen);
+	if (SOCKET_ERROR == iNuminfo)
+	{
+		const DWORD dwLastError = CBTHostDlg::ShowWSALastError(_T("::WSAEnumProtocols"));
+		switch (dwLastError)
+		{
+			case WSAENOBUFS:
+				break;
+		}
+	}
+
+	for (int i = 0; i < iNuminfo; i++) {
+		ATLTRACE2(atlTraceGeneral, 0, L"Winsock Catalog Provider Entry #%d\n", i);
+		if (lpProtocolInfo[i].ProtocolChain.ChainLen = 1)
+			ATLTRACE2(atlTraceGeneral, 0, L"Entry type: Base Service Provider\n");
+		else
+			ATLTRACE2(atlTraceGeneral, 0, L"Entry type: Layered Chain Entry\n");
+
+		ATLTRACE2(atlTraceGeneral, 0, L"Protocol: %ws\n", lpProtocolInfo[i].szProtocol);
+
+		WCHAR GuidString[40] = { 0 };
+		int iRet = ::StringFromGUID2(lpProtocolInfo[i].ProviderId, (LPOLESTR)& GuidString, 39);
+		if (0 == iRet)
+			ATLTRACE2(atlTraceGeneral, 0, L"::StringFromGUID2 failed\n");
+		else
+			ATLTRACE2(atlTraceGeneral, 0, L"Provider ID: %ws\n", GuidString);
+
+		ATLTRACE2(atlTraceGeneral, 0, L"Catalog Entry ID: %u\n", lpProtocolInfo[i].dwCatalogEntryId);
+
+		ATLTRACE2(atlTraceGeneral, 0, L"Version: %d\n", lpProtocolInfo[i].iVersion);
+
+		ATLTRACE2(atlTraceGeneral, 0, L"Address Family: %d\n", lpProtocolInfo[i].iAddressFamily);
+		ATLTRACE2(atlTraceGeneral, 0, L"Max Socket Address Length: %d\n", lpProtocolInfo[i].iMaxSockAddr);
+		ATLTRACE2(atlTraceGeneral, 0, L"Min Socket Address Length: %d\n", lpProtocolInfo[i].iMinSockAddr);
+
+		ATLTRACE2(atlTraceGeneral, 0, L"Socket Type: %d\n", lpProtocolInfo[i].iSocketType);
+		ATLTRACE2(atlTraceGeneral, 0, L"Socket Protocol: %d\n", lpProtocolInfo[i].iProtocol);
+		ATLTRACE2(atlTraceGeneral, 0, L"Socket Protocol Max Offset: %d\n", lpProtocolInfo[i].iProtocolMaxOffset);
+
+		ATLTRACE2(atlTraceGeneral, 0, L"Network Byte Order: %d\n", lpProtocolInfo[i].iNetworkByteOrder);
+		ATLTRACE2(atlTraceGeneral, 0, L"Security Scheme: %d\n", lpProtocolInfo[i].iSecurityScheme);
+		ATLTRACE2(atlTraceGeneral, 0, L"Max Message Size: %u\n", lpProtocolInfo[i].dwMessageSize);
+
+		ATLTRACE2(atlTraceGeneral, 0, L"ServiceFlags1: 0x%x\n", lpProtocolInfo[i].dwServiceFlags1);
+		ATLTRACE2(atlTraceGeneral, 0, L"ServiceFlags2: 0x%x\n", lpProtocolInfo[i].dwServiceFlags2);
+		ATLTRACE2(atlTraceGeneral, 0, L"ServiceFlags3: 0x%x\n", lpProtocolInfo[i].dwServiceFlags3);
+		ATLTRACE2(atlTraceGeneral, 0, L"ServiceFlags4: 0x%x\n", lpProtocolInfo[i].dwServiceFlags4);
+		ATLTRACE2(atlTraceGeneral, 0, L"ProviderFlags: 0x%x\n", lpProtocolInfo[i].dwProviderFlags);
+
+		ATLTRACE2(atlTraceGeneral, 0, L"Protocol Chain length: %d\n", lpProtocolInfo[i].ProtocolChain.ChainLen);
+	}
+
+	if (lpProtocolInfo)
+	{
+		::HeapFree(::GetProcessHeap(), 0, lpProtocolInfo);
+		lpProtocolInfo = NULL;
+	}
+
+	return NOERROR;
 }
 
 HRESULT CBTHostDlg::enumBTRadio(HANDLE& hRadio)
@@ -549,20 +664,22 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 	// Resolve the server address and port
 	struct addrinfo* result = NULL;
 	int iResult = ::getaddrinfo(W2CA(pszRemoteName), "80", &hints, &result);
-	if (iResult != 0) {
+	if (0 != iResult)
+	{
+		// CBTHostDlg::ShowWSALastError(_T("::getaddrinfo()"));
 		ATLTRACE2(atlTraceGeneral, 0, _T("::getaddrinfo() failed with error: %d\n"), iResult);
-		::WSACleanup();
 		return E_FAIL;
 	}
 
 	// Attempt to connect to an address until one succeeds
 	SOCKET ConnectSocket = INVALID_SOCKET;
-	for (struct addrinfo* ptr = result; ptr != NULL; ptr = ptr->ai_next) {
+	for (struct addrinfo* ptr = result; ptr != NULL; ptr = ptr->ai_next)
+	{
 		// Create a SOCKET for connecting to server
 		ConnectSocket = ::socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
-		if (ConnectSocket == INVALID_SOCKET) {
+		if (ConnectSocket == INVALID_SOCKET)
+		{
 			ATLTRACE2(atlTraceGeneral, 0, _T("socket failed with error: %ld\n"), ::WSAGetLastError());
-			::WSACleanup();
 			return E_FAIL;
 		}
 
@@ -581,11 +698,12 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 	}
 	::freeaddrinfo(result);
 
-	if (ConnectSocket == INVALID_SOCKET) {
+	if (INVALID_SOCKET == ConnectSocket)
+	{
 		ATLTRACE2(atlTraceGeneral, 0, _T("Unable to connect to server!\n"));
-		::WSACleanup();
 		return E_FAIL;
 	}
+
 	::closesocket(ConnectSocket);
 	return NOERROR;
 }
@@ -685,7 +803,15 @@ HRESULT CBTHostDlg::enumBTDevices(GUID serviceClass)
 	*/
 	int result = ::WSALookupServiceBegin(&queryset, LUP_CONTAINERS, &hLookup);
 	if (0 != result)
-		CBTHostDlg::ShowWSALastError(_T("WSALookupServiceBegin (device discovery)"));
+	{
+		const DWORD dwLastError = CBTHostDlg::ShowWSALastError(_T("WSALookupServiceBegin (device discovery)"));
+		switch (dwLastError)
+		{
+		case WSASERVICE_NOT_FOUND:
+			// propably no BluetoothRadio installed/plugedin
+			break;
+		}
+	}
 
 	/*
 	* Initialisation succeded, start looking for devices

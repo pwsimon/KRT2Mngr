@@ -39,6 +39,16 @@
 // #define KRT2INPUT_BT       _T("GT-I9300") // 0C:14:20:4A:1F:AD
 #define KRT2INPUT_BT       _T("KRT21885") // 98:D3:31:FD:5A:F2
 
+// function behind btnSoft1
+#define BTNSOFT1_ENUMPROTOCOLS
+// #define BTNSOFT1_ENUMRADIO
+// #define BTNSOFT1_DISCOVERDEVICE
+// #define BTNSOFT1_DISCOVERSERVICE
+
+// function behind btnSoft2
+#define BTNSOFT2_CONNECT
+// #define BTNSOFT2_KRT2PING
+
 // either READ_THREAD or IOALERTABLE
 #define READ_THREAD
 // #define IOALERTABLE
