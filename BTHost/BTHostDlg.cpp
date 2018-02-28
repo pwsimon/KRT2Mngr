@@ -243,7 +243,7 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	return TRUE; // __super::IsExternalDispatchSafe();
 }
 
-#if (27015 == KRT2INPUT_PORT)
+#ifdef KRT2INPUT_PORT
 /*
 * das ist nur eine debugging hilfe
 *

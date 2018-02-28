@@ -35,7 +35,7 @@ protected:
 	virtual void OnDocumentComplete(LPDISPATCH pDisp, LPCTSTR szUrl);
 	virtual BOOL IsExternalDispatchSafe();
 
-#if (27015 == KRT2INPUT_PORT)
+#ifdef KRT2INPUT_PORT
 	STDMETHOD(TranslateAccelerator)(LPMSG lpMsg, const GUID *pguidCmdGroup, DWORD nCmdID);
 #endif
 
