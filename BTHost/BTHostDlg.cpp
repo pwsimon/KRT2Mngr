@@ -57,6 +57,12 @@ END_MESSAGE_MAP()
 /*static*/ WSABUF CBTHostDlg::m_readBuffer = { _countof(CBTHostDlg::m_buf), CBTHostDlg::m_buf };
 #endif
 
+#ifdef SEND_ASYNC
+/*static*/ WSAOVERLAPPED CBTHostDlg::m_SendOverlapped;
+/*static*/ char CBTHostDlg::m_sendBuf[0x4000];
+/*static*/ WSABUF CBTHostDlg::m_sendBuffer = { _countof(CBTHostDlg::m_sendBuf), CBTHostDlg::m_sendBuf };
+#endif
+
 /*static*/ SOCKET CBTHostDlg::m_socketLocal = INVALID_SOCKET;
 
 BEGIN_DHTML_EVENT_MAP(CBTHostDlg)
@@ -349,7 +355,7 @@ LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 {
 	_ASSERT(m_dwThreadAffinity == ::GetCurrentThreadId());
 	_ASSERT(1 == HIWORD(wParam));
-	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() msg value: %hc, length: %hu\n"), LOWORD(wParam), HIWORD(wParam));
+	ATLTRACE2(atlTraceGeneral, 1, _T("CBTHostDlg::OnRXSingleByte() msg value: %hc, length: %hu\n"), LOWORD(wParam), HIWORD(wParam));
 
 	/*
 	* siehe auch:
@@ -614,6 +620,7 @@ HRESULT CBTHostDlg::enumBTDevices(HANDLE hRadio)
 
 HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 {
+	// A socket created by the socket function will have the overlapped attribute (WSA_FLAG_OVERLAPPED) as the default.
 	SOCKET socketLocal = ::socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
 	if (INVALID_SOCKET != socketLocal)
 	{
@@ -624,6 +631,7 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 			* entweder IOALERTABLE (OVERLAPPED_COMPLETION_ROUTINE) ODER
 			* READ_THREAD (GetOverlappedResult)
 			*/
+			CBTHostDlg::m_socketLocal = socketLocal;
 
 #ifdef IOALERTABLE
 			CBTHostDlg::InitCompletionRoutine();
@@ -636,8 +644,6 @@ HRESULT CBTHostDlg::Connect(PSOCKADDR_BTH pRemoteAddr)
 			_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hEvtTerminate);
 			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::BTReadThread, &m_ReadThreadArgs, 0, NULL);
 #endif
-
-			CBTHostDlg::m_socketLocal = socketLocal;
 		}
 		else
 		{
@@ -723,6 +729,8 @@ HRESULT CBTHostDlg::Connect(
 	* socket Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms740506(v=vs.85).aspx
 	* der call MUSS sicherstellen das die "addrServer" auch wirklich eine IPv4 (AF_INET) enthaelt
 	* SOCK_STREAM, A socket type that provides sequenced, reliable, two-way, connection-based byte streams with an OOB data transmission mechanism.
+	* Hinweis:
+	*   A socket created by the socket function will have the overlapped attribute (WSA_FLAG_OVERLAPPED) as the default.
 	*/
 	SOCKET socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (INVALID_SOCKET != socketLocal)
@@ -734,6 +742,8 @@ HRESULT CBTHostDlg::Connect(
 			* entweder IOALERTABLE (OVERLAPPED_COMPLETION_ROUTINE) ODER
 			* READ_THREAD (GetOverlappedResult)
 			*/
+			CBTHostDlg::m_socketLocal = socketLocal;
+
 #ifdef IOALERTABLE
 			CBTHostDlg::InitCompletionRoutine();
 			CBTHostDlg::QueueRead();
@@ -745,8 +755,6 @@ HRESULT CBTHostDlg::Connect(
 			_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hEvtTerminate);
 			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::BTReadThread, &m_ReadThreadArgs, 0, NULL);
 #endif
-
-			CBTHostDlg::m_socketLocal = socketLocal;
 		}
 		else
 		{
@@ -1244,7 +1252,7 @@ HRESULT CBTHostDlg::enumBTServices(
 		const int iRetC = ::WSARecv(pArgs->socketLocal, &readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &RecvOverlapped, NULL);
 		if (0 == iRetC)
 		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Sync): 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
+			ATLTRACE2(atlTraceGeneral, 1, _T("number of bytes received(Sync): 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
 			::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(buf[0], dwNumberOfBytesRecvd), NULL);
 		}
 
@@ -1284,7 +1292,7 @@ HRESULT CBTHostDlg::enumBTServices(
 					if (0 == dwNumberOfBytesRecvd)
 						break;
 
-					ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Async): 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
+					ATLTRACE2(atlTraceGeneral, 1, _T("number of bytes received(Async): 0x%.8x, char: %hc\n"), dwNumberOfBytesRecvd, *readBuffer.buf);
 					::PostMessage(pArgs->hwndMainDlg, WM_USER_RXSINGLEBYTE, MAKEWPARAM(buf[0], dwNumberOfBytesRecvd), NULL);
 					::WSAResetEvent(RecvOverlapped.hEvent);
 				}
@@ -1323,15 +1331,18 @@ HRESULT CBTHostDlg::enumBTServices(
 	CBTHostDlg::m_readBuffer = { _countof(CBTHostDlg::m_buf), CBTHostDlg::m_buf };
 	DWORD dwNumberOfBytesRecvd = 0;
 	DWORD dwFlags = 0; // MSG_PARTIAL, MSG_OOB
-	const int iRetC = ::WSARecv(CBTHostDlg::m_socketLocal, &CBTHostDlg::m_readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &CBTHostDlg::m_RecvOverlappedCompletionRoutine, CBTHostDlg::WorkerRoutine);
+	const int iRetC = ::WSARecv(CBTHostDlg::m_socketLocal, &CBTHostDlg::m_readBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, &CBTHostDlg::m_RecvOverlappedCompletionRoutine, CBTHostDlg::RecvCompletionRoutine);
 	if (SOCKET_ERROR == iRetC)
 	{
-		_ASSERT(WSA_IO_PENDING == ::WSAGetLastError());
+		const int iLastError = ::WSAGetLastError();
+		// const int iLastError = CBTHostDlg::ShowWSALastError(_T("::WSARecv(m_socketLocal, ...)"));
+		if (WSA_IO_PENDING != iLastError)
+			return E_FAIL;
 	}
 	return NOERROR;
 }
 
-/*static*/ void CALLBACK CBTHostDlg::WorkerRoutine(DWORD dwError, DWORD dwBytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags)
+/*static*/ void CALLBACK CBTHostDlg::RecvCompletionRoutine(DWORD dwError, DWORD dwBytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags)
 {
 	/*
 	* die CompletionRoutine wird offensichtlich durch den MainThread ausgefuehrt
@@ -1350,18 +1361,70 @@ HRESULT CBTHostDlg::enumBTServices(
 void CBTHostDlg::txBytes(
 	BSTR bstrBytes)
 {
-	char rgData[0x100];
+#ifdef SEND_ASYNC
+	// convert intel Hex format (bstrBytes) into byte buffer (rgData)
+	char* pWrite = CBTHostDlg::m_sendBuf;
+	{ // local variable scope
+		WCHAR* pcNext = NULL;
+		LPWSTR szToken = _tcstok_s(bstrBytes, L" ", &pcNext); // bstrBytes will be modified!
+		while (NULL != szToken)
+		{
+			*pWrite++ = _tcstol(szToken, NULL, 16);
+			szToken = _tcstok_s(NULL, L" ", &pcNext);
+		}
+		pWrite = CBTHostDlg::m_sendBuf + _countof(CBTHostDlg::m_sendBuf);
+	}
+
+	{ // send data
+		// Make sure the SendOverlapped struct is zeroed out
+		SecureZeroMemory((PVOID)& CBTHostDlg::m_SendOverlapped, sizeof(WSAOVERLAPPED));
+
+		/*
+		* WSASend Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms742203(v=vs.85).aspx
+		*/
+		WSABUF writeBuffer = { pWrite - CBTHostDlg::m_sendBuf, CBTHostDlg::m_sendBuf };
+		DWORD dwFlags = 0;
+		const int iRetC = ::WSASend(CBTHostDlg::m_socketLocal, &writeBuffer, 1, NULL, dwFlags, &CBTHostDlg::m_SendOverlapped, CBTHostDlg::SendCompletionRoutine);
+		if (0 == iRetC)
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x\n"), pWrite - CBTHostDlg::m_sendBuf);
+		}
+
+		else
+		{
+			_ASSERT(SOCKET_ERROR == iRetC);
+			const int iLastError = ::WSAGetLastError();
+			if (WSA_IO_PENDING == iLastError)
+			{
+				ATLTRACE2(atlTraceGeneral, 0, _T("wait for SendCompletionROUTINE\n"));
+			}
+		}
+	}
+#else
+
+	// convert intel Hex format (bstrBytes) into byte buffer (rgData)
+	char rgData[0x0100];
 	char* pWrite = rgData;
-	WCHAR* pcNext = NULL;
-	LPWSTR szToken = _tcstok_s(bstrBytes, L" ", &pcNext); // bstrBytes will be modified!
-	while (NULL != szToken)
-	{
-		*pWrite++ = _tcstol(szToken, NULL, 16);
-		szToken = _tcstok_s(NULL, L" ", &pcNext);
+	{ // local variable scope
+		WCHAR* pcNext = NULL;
+		LPWSTR szToken = _tcstok_s(bstrBytes, L" ", &pcNext); // bstrBytes will be modified!
+		while (NULL != szToken)
+		{
+			*pWrite++ = _tcstol(szToken, NULL, 16);
+			szToken = _tcstok_s(NULL, L" ", &pcNext);
+		}
 	}
 
 	if (SOCKET_ERROR == ::send(CBTHostDlg::m_socketLocal, rgData, pWrite - rgData, 0))
 		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
 
-	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() NoOfBytes: 0x%.8x\n"), pWrite - rgData);
+	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x\n"), pWrite - rgData);
+#endif
 }
+
+#ifdef SEND_ASYNC
+/*static*/ void CBTHostDlg::SendCompletionRoutine(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags)
+{
+	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::SendCompletionRoutine() cbTransferred: 0x%.8x\n"), cbTransferred);
+}
+#endif

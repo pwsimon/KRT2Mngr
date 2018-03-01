@@ -46,7 +46,7 @@ protected:
 		HANDLE hEvtTerminate;
 	} m_ReadThreadArgs;
 	HANDLE m_hReadThread;
-	static unsigned int __stdcall BTReadThread(void* arguments);
+	static unsigned int CALLBACK BTReadThread(void* arguments);
 #endif
 #ifdef IOALERTABLE
 	static WSAOVERLAPPED m_RecvOverlappedCompletionRoutine;
@@ -54,7 +54,14 @@ protected:
 	static WSABUF m_readBuffer;
 	static HRESULT InitCompletionRoutine();
 	static HRESULT QueueRead();
-	static void CALLBACK WorkerRoutine(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags);
+	static void CALLBACK RecvCompletionRoutine(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags);
+#endif
+
+#ifdef SEND_ASYNC
+	static WSAOVERLAPPED m_SendOverlapped;
+	static char m_sendBuf[0x4000];
+	static WSABUF m_sendBuffer;
+	static void CALLBACK SendCompletionRoutine(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags);
 #endif
 
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
