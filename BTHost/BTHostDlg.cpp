@@ -59,7 +59,7 @@ END_MESSAGE_MAP()
 
 #ifdef SEND_ASYNC
 /*static*/ WSAOVERLAPPED CBTHostDlg::m_SendOverlapped;
-/*static*/ char CBTHostDlg::m_sendBuf[0x4000];
+/*static*/ char CBTHostDlg::m_sendBuf[0x100];
 /*static*/ WSABUF CBTHostDlg::m_sendBuffer = { _countof(CBTHostDlg::m_sendBuf), CBTHostDlg::m_sendBuf };
 #endif
 
@@ -355,7 +355,7 @@ LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 {
 	_ASSERT(m_dwThreadAffinity == ::GetCurrentThreadId());
 	_ASSERT(1 == HIWORD(wParam));
-	ATLTRACE2(atlTraceGeneral, 1, _T("CBTHostDlg::OnRXSingleByte() msg value: %hc, length: %hu\n"), LOWORD(wParam), HIWORD(wParam));
+	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnRXSingleByte() Byte: 0x%.2x, length: %hu\n"), LOWORD(wParam), HIWORD(wParam));
 
 	/*
 	* siehe auch:
@@ -366,7 +366,7 @@ LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 
 	// read next / continue loop
 #ifdef IOALERTABLE
-	_ASSERT(*CBTHostDlg::m_buf == LOWORD(wParam));
+	_ASSERT(((unsigned char)*CBTHostDlg::m_buf) == LOWORD(wParam));
 	CBTHostDlg::QueueRead();
 #endif
 
@@ -1350,10 +1350,15 @@ HRESULT CBTHostDlg::enumBTServices(
 	_ASSERT(m_dwThreadAffinity == ::GetCurrentThreadId());
 	*/
 
-	ATLTRACE2(atlTraceGeneral, 0, _T("CompletionRoutine() dwBytesTransferred: 0x%.8x, ::GetCurrentThreadId(): 0x%.8x\n"), dwBytesTransferred, ::GetCurrentThreadId());
+	// ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::RecvCompletionRoutine() dwBytesTransferred: 0x%.8x, ::GetCurrentThreadId(): 0x%.8x\n"), dwBytesTransferred, ::GetCurrentThreadId());
 	if (0 < dwBytesTransferred)
 	{
-		AfxGetMainWnd()->PostMessage(WM_USER_RXSINGLEBYTE, MAKEWPARAM(*CBTHostDlg::m_buf, dwBytesTransferred), NULL);
+		ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::RecvCompletionRoutine() dwBytesTransferred: 0x%.8x, Byte: 0x%.2x\n"), dwBytesTransferred, (unsigned char) *CBTHostDlg::m_buf);
+		/*
+		* wir muessen aus diesem "static" context in den instance context von CBTHostDlg wechseln damit wir zugriff auf m_ddScript haben.
+		* z.B. SendMessage()
+		*/
+		AfxGetMainWnd()->PostMessage(WM_USER_RXSINGLEBYTE, MAKEWPARAM((unsigned char) *CBTHostDlg::m_buf, dwBytesTransferred), NULL);
 	}
 }
 #endif
@@ -1361,6 +1366,13 @@ HRESULT CBTHostDlg::enumBTServices(
 void CBTHostDlg::txBytes(
 	BSTR bstrBytes)
 {
+	/*
+	* Alertable I/O, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363772(v=vs.85).aspx
+	*
+	* WSAAsyncSelect Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms741540(v=vs.85).aspx
+	::WSAAsyncSelect
+	*/
+
 #ifdef SEND_ASYNC
 	// convert intel Hex format (bstrBytes) into byte buffer (rgData)
 	char* pWrite = CBTHostDlg::m_sendBuf;
@@ -1372,7 +1384,10 @@ void CBTHostDlg::txBytes(
 			*pWrite++ = _tcstol(szToken, NULL, 16);
 			szToken = _tcstok_s(NULL, L" ", &pcNext);
 		}
+
 		pWrite = CBTHostDlg::m_sendBuf + _countof(CBTHostDlg::m_sendBuf);
+		for (int iIndex = 0xff; 0 <= iIndex; iIndex -= 1)
+			CBTHostDlg::m_sendBuf[iIndex] = iIndex;
 	}
 
 	{ // send data
