@@ -1397,9 +1397,8 @@ void CBTHostDlg::txBytes(
 		/*
 		* WSASend Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms742203(v=vs.85).aspx
 		*/
-		WSABUF writeBuffer = { pWrite - CBTHostDlg::m_sendBuf, CBTHostDlg::m_sendBuf };
 		DWORD dwFlags = 0;
-		const int iRetC = ::WSASend(CBTHostDlg::m_socketLocal, &writeBuffer, 1, NULL, dwFlags, &CBTHostDlg::m_SendOverlapped, CBTHostDlg::SendCompletionRoutine);
+		const int iRetC = ::WSASend(CBTHostDlg::m_socketLocal, &CBTHostDlg::m_sendBuffer, 1, NULL, dwFlags, &CBTHostDlg::m_SendOverlapped, CBTHostDlg::SendCompletionRoutine);
 		if (0 == iRetC)
 		{
 			ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x\n"), pWrite - CBTHostDlg::m_sendBuf);
