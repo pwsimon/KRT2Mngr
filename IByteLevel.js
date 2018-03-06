@@ -1,6 +1,6 @@
 ﻿/*
 * ALLE Methoden der IByteLevel schnittstelle muessen (TopLevel) verfuegbar sein
-* diese vereinbarung stellt sicher das die aufrufen aus dem Host, einfach, ausgefuehrt werden koennen
+* diese vereinbarung stellt sicher das die aufrufe aus dem Host, einfach, ausgefuehrt werden koennen
 *
 * mit der weiterentwicklung beziehen wir den (aktuell globalen g_cmdParser) durch ein require()
 */

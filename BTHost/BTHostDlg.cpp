@@ -153,9 +153,14 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	*     COMHost.cpp(44): CCOMHostApp::InitInstance()
 	*     HKEY_CURRENT_USER\SOFTWARE\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\COMHost.exe (REG_DWORD) 11000
 	*/
-	// m_nHtmlResID = 0;
-	// m_strCurrentUrl = _T("http://localhost/krt2mngr/bthost/bthost.htm"); // ohne fehler
-	m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
+
+	/*
+	* die IDR_HTML_BTHOST_DIALOG darf/kann nur verwendet werden wenn GARANTIERT ist das sie keine referenzen enthaelt (BOWER)
+	* bzw. alle verwendeten referenzen in kopie zu den resource hinzugefuegt wurden
+	m_nHtmlResID = 0;
+	*/
+	m_strCurrentUrl = _T("http://localhost/krt2mngr/bthost/bthost.htm"); // ohne fehler
+	// m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
 	CCommandLineInfo cmdLI;
 	theApp.ParseCommandLine(cmdLI);
 	if (CCommandLineInfo::FileOpen == cmdLI.m_nShellCommand)
