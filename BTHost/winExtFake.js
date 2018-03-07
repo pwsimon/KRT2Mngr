@@ -15,10 +15,11 @@ var WinExt = WinExt || (function () {
 		* z.B. 0x06 0x45 ...
 		*/
 		txBytes: function (sHexBytes) {
+			console.log("txBytes()", sHexBytes);
 			window.setTimeout(function () {
 				OnRXSingleByte(6); // IByteLevel::OnRXSingleByte(ACK)
 				// OnRXSingleByte(15); // IByteLevel::OnRXSingleByte(NAK)
-			}, 1000);
+			}, 500); // MUSS natuerlich kleiner g_tWaitForAckNakTimeout sein
 		}
 	};
 })();

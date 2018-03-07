@@ -120,12 +120,12 @@ function OnRXSingleByte(nByte) {
 	}
 
 	else if (6 == nByte && g_cmdParserAckNakHandler) { // ACK
-		console.log("delegate to initiator of txBytes()");
+		console.log("delegate ACK to initiator of txBytes()");
 		g_cmdParserAckNakHandler.call(g_multiCommand, nByte);
 	}
 
 	else if (15 == nByte && g_cmdParserAckNakHandler) { // NAK
-		console.log("delegate to initiator of txBytes()");
+		console.log("delegate NAK to initiator of txBytes()");
 		g_cmdParserAckNakHandler.call(g_multiCommand, nByte);
 	}
 
@@ -208,15 +208,23 @@ function sendCommandAndVerify(oMultiCommand) {
 	}, g_tWaitForAckNakTimeout);
 
 	g_cmdParserAckNakHandler = function (nByte) {
-		if (6 == nByte) // ACK
-			console.log("succeeded");
-		else
+		if (15 == nByte) {
 			console.log("failed");
+			// return; // break
+		} else
+			console.log("succeeded");
+
+		console.assert(0 != g_tWaitForAckNak, "0 != g_tWaitForAckNak");
+		window.clearTimeout(g_tWaitForAckNak);
 
 		this.nIndex += 1; // check for continue
-		if (this.nIndex < this.rgCommands.length)
+		if (this.nIndex < this.rgCommands.length) {
+			g_tWaitForAckNak = window.setTimeout(function () {
+				g_cmdParserAckNakHandler.call(g_multiCommand, 15);
+				console.assert(null == g_cmdParserAckNakHandler, "null == g_cmdParserAckNakHandler");
+			}, g_tWaitForAckNakTimeout);
 			WinExt.txBytes(this.rgCommands[this.nIndex]);
-		else
+		} else
 			g_cmdParserAckNakHandler = null; // command finished
 	}
 
