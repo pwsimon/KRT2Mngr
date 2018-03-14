@@ -1,6 +1,4 @@
-console.log("Enter(krt4bytelevel.js)::globalCode()");
-
-define(["./winExtFake"], function (winExt) {
+define(["./winExtFakeEcho"], function (winExt) {
 	// Do setup work here
 
 	// return an object to define the module.
@@ -85,5 +83,3 @@ define(["./winExtFake"], function (winExt) {
 		}
 	}
 });
-
-console.log("Leave(krt4bytelevel.js)::globalCode()");

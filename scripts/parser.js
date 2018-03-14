@@ -74,7 +74,7 @@ define(function () {
 		name: "parser",
 		description: "KRT2 command parser",
 
-		cmdParser: new CommandParser(),
+		cmdParser: null,
 		cmdParserAckNakHandler: null,
 
 		topLevelDrive: function (nByte) {
@@ -82,11 +82,11 @@ define(function () {
 			* document.getElementById('lblCommand').innerText = String.fromCharCode(nByte);
 			* solange ein parser (g_cmdParser) active ist muss dieser die hoechste prioritaet haben
 			*/
-			if (cmdParser) {
-				if (cmdParser.Drive(nByte)) {
+			if (this.cmdParser) {
+				if (this.cmdParser.Drive(nByte)) {
 					// console.log("finished:", g_cmdParser.rgCmd.sCmd);
-					document.getElementById('lblCommand').innerText = "finished: " + cmdParser.rgCmd.sCmd;
-					cmdParser = null; // enter IDLE
+					document.getElementById('lblCommand').innerText = "finished: " + this.cmdParser.rgCmd.sCmd;
+					this.cmdParser = null; // enter IDLE
 				}
 			}
 
@@ -96,20 +96,20 @@ define(function () {
 			}
 
 			else if (2 == nByte) { // STX
-				if (cmdParser)
+				if (this.cmdParser)
 					console.log("previous command unsuccessfull/interrupted");
 
-				cmdParser = new CommandParser();
+				this.cmdParser = new CommandParser();
 			}
 
-			else if (6 == nByte && cmdParserAckNakHandler) { // ACK
+			else if (6 == nByte && this.cmdParserAckNakHandler) { // ACK
 				console.log("delegate to initiator of txBytes()");
-				cmdParserAckNakHandler(nByte);
+				this.cmdParserAckNakHandler(nByte);
 			}
 
-			else if (15 == nByte && cmdParserAckNakHandler) { // NAK
+			else if (15 == nByte && this.cmdParserAckNakHandler) { // NAK
 				console.log("delegate to initiator of txBytes()");
-				cmdParserAckNakHandler(nByte);
+				this.cmdParserAckNakHandler(nByte);
 			}
 
 			else {

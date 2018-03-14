@@ -4,7 +4,6 @@
 */
 function OnRXSingleByte(nByte) {
 	requirejs(['parser'], function (mParser) {
-		mParser.topLevelDrive.call(mParser.cmdParser, nByte);
-		// mParser.topLevelDrive(nByte);
+		mParser.topLevelDrive(nByte);
 	})
 }

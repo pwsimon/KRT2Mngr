@@ -20,7 +20,7 @@ requirejs(['jquery', 'KRT4ByteLevel'], function ($, mKRT) {
 		g_bDUALMode = !g_bDUALMode;
 		lAccept = mKRT.fireAndForget(g_bDUALMode ? sDualModeOn : sDualModeOff);
 		if (lAccept)
-			document.getElementById('command').innerText = 'command rejected, buffer full/busy';
+			document.getElementById('lblCommand').innerText = 'command rejected, buffer full/busy';
 	});
 
 	$('#uploadToKRT2').on('click', function () {
