@@ -7,7 +7,7 @@
 		- fuer eine EIN FILE strategie brauch ich einen precompiler BOWER vor dem deployment
 		- solange ich im meiner entwicklungsumgebung das http:// protocol verwende kann ich mit require.js modularisieren
 	-->
-	<script type="text/javascript" src="winExtFake.js"></script>
+	<script type="text/javascript" src="winExt.js"></script>
 	<script type="text/javascript">
 var g_cmdParser;
 var g_multiCommand = null; // send cmultiple commands context
@@ -131,6 +131,7 @@ function OnRXSingleByte(nByte) {
 
 	else {
 		console.log("invalid sequence");
+		document.getElementById('lblCommand').innerText = "invalid sequence";
 	}
 }
 /*
@@ -172,8 +173,8 @@ function sendSingleCommand() {
 	* Hinweis(e)
 	*   fire and forget, no verification
 	*/
-	WinExt.txBytes("0x02 0x4f"); // { STX, 'O' }; // 1.3.7 DUAL-mode on
-	// WinExt.txBytes("0x02 0x6f"); // { STX, 'o' }; // 1.3.8 DUAL-mode off
+	sendCommandAndVerify("0x02 0x4f"); // { STX, 'O' }; // 1.3.7 DUAL-mode on
+	// sendCommandAndVerify("0x02 0x6f"); // { STX, 'o' }; // 1.3.8 DUAL-mode off
 }
 function sendCommandAndVerify(oMultiCommand) {
 	if ("string" == typeof oMultiCommand) {
@@ -210,9 +211,12 @@ function sendCommandAndVerify(oMultiCommand) {
 	g_cmdParserAckNakHandler = function (nByte) {
 		if (15 == nByte) {
 			console.log("failed");
+			document.getElementById('lblCommand').innerText = "failed";
 			// return; // break
-		} else
+		} else {
 			console.log("succeeded");
+			document.getElementById('lblCommand').innerText = "succeeded";
+		}
 
 		console.assert(0 != g_tWaitForAckNak, "0 != g_tWaitForAckNak");
 		window.clearTimeout(g_tWaitForAckNak);
@@ -280,7 +284,7 @@ window.onload = function () {
 		<TD ALIGN=RIGHT VALIGN=BOTTOM>
 			<BUTTON ID="btnSoft1">undefined</BUTTON>&nbsp;
 			<BUTTON ID="btnSoft2">undefined</BUTTON>&nbsp;
-			<BUTTON onclick="sendSingleCommand()">fireAndForget</BUTTON>&nbsp;
+			<BUTTON onclick="sendSingleCommand()">sendSingleCommand</BUTTON>&nbsp;
 			<BUTTON onclick="sendMultipleCommands()">sendMultipleCommands</BUTTON>
 		</TD>
 	</TR>

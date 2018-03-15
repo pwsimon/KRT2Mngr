@@ -157,8 +157,8 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	/*
 	* die IDR_HTML_BTHOST_DIALOG darf/kann nur verwendet werden wenn GARANTIERT ist das sie keine referenzen enthaelt (BOWER)
 	* bzw. alle verwendeten referenzen in kopie zu den resource hinzugefuegt wurden
-	m_nHtmlResID = 0;
 	*/
+	m_nHtmlResID = 0;
 	m_strCurrentUrl = _T("http://localhost/krt2mngr/bthost/bthost.htm"); // ohne fehler
 	// m_strCurrentUrl = _T("http://ws-psi.estos.de/krt2mngr/sevenseg.html"); // need browser_emulation
 	CCommandLineInfo cmdLI;
