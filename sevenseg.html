@@ -118,7 +118,7 @@ $(document).ready(function () {
 			});
 
 			$('#command').text(sCommand);
-			window.external.sendCommand(sCommand, function (error, result) { });
+			WinExtByteLevelModul.sendCommand(sCommand, function (error, result) { });
 			ko.applyBindings({ station: ko.observable(fAttrValue) });
 		}
 	});
@@ -131,7 +131,7 @@ function toggleDUALMode() {
 		lAccept;
 
 	g_bDUALMode = !g_bDUALMode;
-	lAccept = window.external.fireAndForget(g_bDUALMode ? sDualModeOn : sDualModeOff);
+	lAccept = WinExtByteLevelModul.fireAndForget(g_bDUALMode ? sDualModeOn : sDualModeOff);
 	if (lAccept)
 		document.getElementById('command').innerText = 'command rejected, buffer full/busy';
 }

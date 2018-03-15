@@ -11,6 +11,12 @@
 */
 var WinExtByteLevelModul = WinExtByteLevelModul || (function () {
 	return {
+		fireAndForget: function(sCommand) {
+			// window.external.fireAndForget(sCommand);
+		},
+		sendCommand: function(sCommand, fnCB) {
+			// window.external.sendCommand(sCommand, fnCB);
+		},
 		uploadToKRT2: function () {
 			var nIndex = 0,
 				rgCommands = PersistModul.rgStations.map(function (station, nStationIndex) {
