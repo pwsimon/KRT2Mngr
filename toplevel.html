@@ -1,0 +1,91 @@
+<DOCTYPE html>
+<html>
+
+<!--
+	diese UI component deckt ausschliesslich KRT2 specials ab.
+	Das heisst im besonderen das hier keine specials zum Host z.B. Discovery/Connection/... behandelt werden duerfen.
+	Hinweis:
+		eine kleine unschaerfe/flexibilitaet ist durch die SoftButtons gegeben.
+-->
+<head>
+	<link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+	<link rel="stylesheet" href="sevenseg.css">
+	<link rel="stylesheet" href="krt2panel.css">
+	<style>
+.cont {
+	display: flex;
+}
+.leftCol {
+	flex: 1;
+}
+.rightCol {
+	flex: 1;
+}
+.frequence {
+	height:     25px;
+	width:      200px;
+}
+#stationsCont {
+	height:     290px; /* die bildschirmhoehe von meinem ASUSPRO5IJC ist NICHT ausreichend */
+	overflow-y: scroll;
+}
+	</style>
+	<!--
+		fremd (third-party) libraries:
+		Ausnahme(n):
+			jquery wird indirekt via. requirejs.config geladen
+			jquery-ui, Using jQuery UI with AMD, https://learn.jquery.com/jquery-ui/environments/amd/
+	-->
+	<!-- http://knockoutjs.com/index.html -->
+	<script src="//ajax.aspnetcdn.com/ajax/knockout/knockout-2.2.1.js"></script>
+	<!--
+		ab hier werden anwendungs module geladen:
+		wir laden mit requirejs nur das initiale anwendungs script/modul via. DOMScript
+		alles andere laden wir als dynamisches AMD (requirejs) Modul
+	-->
+	<script data-main="scripts/main" src="scripts/lib/require.js"></script>
+	<!--
+		hier werden die globalen einsprungpunkte fuer den aufruf aus dem Host definiert
+		weil sie global sein muessen koennen wir sie nicht in ein Modul verschieben
+		Hinweis:
+			wir brauchen das aktuell nur fuer den BTHost, function OnRXSingleByte() weil wir hier keinen callback registrieren
+			der COMHost definiert auf der window.external schnittstelle ausschliesslich funktionen MIT einem callback
+	-->
+	<script data-main="scripts/main" src="BTHostGlobalCBs.js"></script>
+</head>
+
+<body>
+	<div class="cont">
+		<div class="leftCol">
+			<!--
+				wenn ich eine map nutze darf ich das bild nicht scalieren
+				ImageMap Generator, http://imagemap-generator.dariodomi.de/
+			-->
+			<img id="KRT2Panel" src="krt2old.png" usemap="#buttonmap">
+			<map name="buttonmap">
+				<area title="Power-On/Off" id="uploadToKRT2" shape="rect" coords="86,30,142,82" />
+				<area title="toggle DUALMode" id="toggleDUALMode" shape="rect" coords="153,34,202,81" />
+				<area title="AUD" shape="rect" coords="218,35,264,81" />
+				<area title="Memory" shape="rect" coords="97,275,144,323" />
+				<area title="switch" shape="rect" coords="162,276,202,318" />
+				<area title="Frequence" shape="rect" coords="221,275,264,320" />
+			</map>
+		</div>
+		<div class="rightCol">
+			<input id="frequence" type="hidden" data-bind="value: station, valueUpdate: 'afterkeydown'">
+			<p>
+				<span id="lblCommand"></span>
+				<button id="btnSoft1">undefined</button>
+				<button id="btnSoft2">undefined</button>
+			</p>
+			<div id="stationsCont">
+				<ol id="stations"></ol>
+			</div>
+		</div>
+	</div>
+	<hr />
+	<div class="frequence" data-bind="sevenSeg: { digits: 6, value: station, allowInput: true, step: 0.025, decimalPlaces: 3 }"></div>
+	<input type="file" id="file-input" />
+</body>
+
+</html>
