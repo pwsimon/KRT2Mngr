@@ -8,6 +8,8 @@
 		eine kleine unschaerfe/flexibilitaet ist durch die SoftButtons gegeben.
 -->
 <head>
+	<link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+	<link rel="stylesheet" href="sevenseg.css">
 	<link rel="stylesheet" href="krt2panel.css">
 	<style>
 .cont {
@@ -28,6 +30,19 @@
 	overflow-y: scroll;
 }
 	</style>
+	<!--
+		fremd (third-party) libraries:
+		Ausnahme(n):
+			jquery wird indirekt via. requirejs.config geladen
+			jquery-ui, Using jQuery UI with AMD, https://learn.jquery.com/jquery-ui/environments/amd/
+	-->
+	<!-- http://knockoutjs.com/index.html -->
+	<script src="//ajax.aspnetcdn.com/ajax/knockout/knockout-2.2.1.js"></script>
+	<!--
+		ab hier werden anwendungs module geladen:
+		wir laden mit requirejs nur das initiale anwendungs script/modul via. DOMScript
+		alles andere laden wir als dynamisches AMD (requirejs) Modul
+	-->
 	<script data-main="scripts/main" src="scripts/lib/require.js"></script>
 	<!--
 		hier werden die globalen einsprungpunkte fuer den aufruf aus dem Host definiert
@@ -57,7 +72,7 @@
 			</map>
 		</div>
 		<div class="rightCol">
-			<input id="frequence" type="hidden">
+			<input id="frequence" type="hidden" data-bind="value: station, valueUpdate: 'afterkeydown'">
 			<p>
 				<span id="lblCommand"></span>
 				<button id="btnSoft1">undefined</button>
@@ -69,6 +84,7 @@
 		</div>
 	</div>
 	<hr />
+	<div class="frequence" data-bind="sevenSeg: { digits: 6, value: station, allowInput: true, step: 0.025, decimalPlaces: 3 }"></div>
 	<input type="file" id="file-input" />
 </body>
 

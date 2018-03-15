@@ -65,7 +65,7 @@ define(function () {
 		}
 		this.tTimeout = window.setTimeout(function () {
 			console.log("reset the global parser");
-			document.getElementById('lblCommand').innerText = "reset the global parser";
+			$('#lblCommand').text("reset the global parser");
 			g_cmdParser = null; // enter IDLE
 		}, 5000); // 9600 baud => 100 Char/Sec => 50 Char/0.5 Sec
 	}
@@ -85,14 +85,14 @@ define(function () {
 			if (this.cmdParser) {
 				if (this.cmdParser.Drive(nByte)) {
 					// console.log("finished:", g_cmdParser.rgCmd.sCmd);
-					document.getElementById('lblCommand').innerText = "finished: " + this.cmdParser.rgCmd.sCmd;
+					$('#lblCommand').text("finished: " + this.cmdParser.rgCmd.sCmd);
 					this.cmdParser = null; // enter IDLE
 				}
 			}
 
 			else if ("S".charCodeAt(0) == nByte) {
 				console.log("ping");
-				document.getElementById('lblCommand').innerText = "ping";
+				$('#lblCommand').text("ping");
 			}
 
 			else if (2 == nByte) { // STX

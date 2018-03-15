@@ -1,15 +1,16 @@
-// Place third party dependencies in the lib folder
+// Place third party dependencies "jquery", ... in from CDN
 //
-// Configure loading modules from the lib directory,
+// Configure loading modules from the "scripts" directory,
 // except 'app' ones, 
 requirejs.config({
 	"baseUrl": "scripts",
 	"paths": {
-		"jquery": "//code.jquery.com/jquery-1.12.4"
+		"jquery": "//code.jquery.com/jquery-1.12.4",
+		"jquery-ui": "//code.jquery.com/ui/1.12.1/jquery-ui"
 	}
 });
 
-requirejs(['jquery', 'KRT4ByteLevel'], function ($, mKRT) {
+requirejs(['jquery', 'jquery-ui', 'KRT4ByteLevel', 'sevenSeg.js'], function ($, ui, mKRT) {
 	var g_bDUALMode = false;
 
 	$('#toggleDUALMode').on('click', function () {
@@ -20,10 +21,12 @@ requirejs(['jquery', 'KRT4ByteLevel'], function ($, mKRT) {
 		g_bDUALMode = !g_bDUALMode;
 		lAccept = mKRT.fireAndForget(g_bDUALMode ? sDualModeOn : sDualModeOff);
 		if (lAccept)
-			document.getElementById('lblCommand').innerText = 'command rejected, buffer full/busy';
+			$('#lblCommand').text('command rejected, buffer full/busy');
 	});
 
 	$('#uploadToKRT2').on('click', function () {
 		mKRT.uploadToKRT2();
 	});
+
+	ko.applyBindings({ station: ko.observable(123.500) });
 })
