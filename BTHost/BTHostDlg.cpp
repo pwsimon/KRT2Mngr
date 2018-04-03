@@ -396,11 +396,17 @@ LRESULT CBTHostDlg::OnAsyncSelectKRT2(WPARAM wParam, LPARAM lParam)
 {
 	switch (WSAGETSELECTEVENT(lParam))
 	{
-	case FD_READ:
-		break;
-	case FD_WRITE:
-		ATLTRACE2(atlTraceGeneral, 0, _T("write to is possible\n"));
-		break;
+		case FD_READ:
+		{
+			ATLTRACE2(atlTraceGeneral, 0, _T("try read\n"));
+			char buf[0x01];
+			const int iNumberOfBytesRecvd = ::recv(CBTHostDlg::m_socketLocal, buf, sizeof(buf), 0);
+			ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Async): 0x%.8x, byte: %d\n"), iNumberOfBytesRecvd, *buf);
+		}
+			break;
+		case FD_WRITE:
+			ATLTRACE2(atlTraceGeneral, 0, _T("write to is possible\n"));
+			break;
 	}
 	return 0;
 }
@@ -765,15 +771,27 @@ HRESULT CBTHostDlg::Connect(
 	* Hinweis:
 	*   A socket created by the socket function will have the overlapped attribute (WSA_FLAG_OVERLAPPED) as the default.
 	*/
+	_ASSERT(INVALID_SOCKET == CBTHostDlg::m_socketLocal);
+#ifdef TESTCASE_NONBLOCKING
+	ATLTRACE2(atlTraceGeneral, 0, _T("TESTCASE_NONBLOCKING: reduce buffersizes (SO_SNDBUF/SO_RCVBUF) to ZERO!\n"));
 	SOCKET socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	int iBufSize = 0;
+	if (::setsockopt(socketLocal, SOL_SOCKET, SO_SNDBUF, (const char*)&iBufSize, sizeof(iBufSize)))
+		CBTHostDlg::ShowWSALastError(_T("::setsockopt(..., SO_SNDBUF, 0, ...)"));
+	if (::setsockopt(socketLocal, SOL_SOCKET, SO_RCVBUF, (const char*)&iBufSize, sizeof(iBufSize)))
+		CBTHostDlg::ShowWSALastError(_T("::setsockopt(..., SO_RCVBUF, 0, ...)"));
+#else
+
+	SOCKET socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#endif
 	if (INVALID_SOCKET != socketLocal)
 	{
 		if (INVALID_SOCKET != ::connect(socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
 		{
 			/*
 			* wir lesen IMMER nonblocking.
-			* entweder IOALERTABLE (OVERLAPPED_COMPLETION_ROUTINE) ODER
-			* READ_THREAD (GetOverlappedResult)
+			* entweder IOALERTABLE (OVERLAPPED_COMPLETION_ROUTINE), READ_THREAD (GetOverlappedResult) ODER
+			* WSAASYNCSELECT
 			*/
 			CBTHostDlg::m_socketLocal = socketLocal;
 
@@ -795,7 +813,7 @@ HRESULT CBTHostDlg::Connect(
 			*
 			* WSAAsyncSelect Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms741540(v=vs.85).aspx
 			*/
-			::WSAAsyncSelect(CBTHostDlg::m_socketLocal, m_hWnd, 0, FD_READ | FD_WRITE);
+			::WSAAsyncSelect(CBTHostDlg::m_socketLocal, m_hWnd, WM_USER_KRT2, FD_READ | FD_WRITE);
 #endif
 		}
 		else
@@ -832,8 +850,6 @@ HRESULT CBTHostDlg::Connect(
 			char* header = "GET /index.html HTTP/1.1\nHost: www.example.com\n";
 			if (SOCKET_ERROR == ::send(LocalSocket, header, sizeof header, 0))
 				CBTHostDlg::ShowWSALastError(_T("::send(LocalSocket, ...)"));
-
-			// byte_count = ::recv(LocalSocket, buf, sizeof buf, 0);
 		}
 		else
 			CBTHostDlg::ShowWSALastError(_T("::connect(LocalSocket, ...)"));
@@ -1431,6 +1447,7 @@ void CBTHostDlg::txBytes(
 	const int iBytesSend = ::send(CBTHostDlg::m_socketLocal, rgData, pWrite - rgData, 0);
 	if (pWrite - rgData < iBytesSend)
 	{
+		// um das zu forcieren braucht es: TESTCASE_NONBLOCKING
 		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
 		ATLTRACE2(atlTraceGeneral, 0, _T("block splitted/segmented! sizeofFirstBlock: 0x%.8x\n"), iBytesSend);
 	}

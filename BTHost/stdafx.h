@@ -57,7 +57,7 @@
 * https://support.microsoft.com/en-us/help/181611/socket-overlapped-i-o-versus-blocking-nonblocking-mode
 *   WSAAsyncSelect maps socket notifications to Windows messages and is the best model for a single threaded GUI application.
 */
-#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#define TESTCASE_NONBLOCKING
 #define WSAASYNCSELECT
 
 // either SEND_ASYNC or not
