@@ -42,9 +42,15 @@ BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
 END_MESSAGE_MAP()
 
 // CBTHostDlg dialog
+#ifdef READ_THREAD
 #define WM_USER_ACK             (WM_USER + 1) // posted from BTReadThread
 #define WM_USER_RXSINGLEBYTE    (WM_USER + 2)
 #define WM_USER_RXDECODEDCMD    (WM_USER + 3)
+#endif
+
+#ifdef WSAASYNCSELECT
+#define WM_USER_KRT2            (WM_USER + 1)
+#endif
 
 #define SEND_TIMEOUT            100
 #define STX                     0x02
@@ -73,7 +79,12 @@ END_DHTML_EVENT_MAP()
 BEGIN_MESSAGE_MAP(CBTHostDlg, CDHtmlDialog)
 	ON_WM_SYSCOMMAND()
 	ON_WM_CLOSE()
+#ifdef READ_THREAD
 	ON_MESSAGE(WM_USER_RXSINGLEBYTE, OnRXSingleByte)
+#endif
+#ifdef WSAASYNCSELECT
+	ON_MESSAGE(WM_USER_KRT2, OnAsyncSelectKRT2)
+#endif
 END_MESSAGE_MAP()
 
 /*
@@ -356,6 +367,7 @@ HCURSOR CBTHostDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+#ifdef READ_THREAD
 LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 {
 	_ASSERT(m_dwThreadAffinity == ::GetCurrentThreadId());
@@ -377,6 +389,22 @@ LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 
 	return 0;
 }
+#endif
+
+#ifdef WSAASYNCSELECT
+LRESULT CBTHostDlg::OnAsyncSelectKRT2(WPARAM wParam, LPARAM lParam)
+{
+	switch (WSAGETSELECTEVENT(lParam))
+	{
+	case FD_READ:
+		break;
+	case FD_WRITE:
+		ATLTRACE2(atlTraceGeneral, 0, _T("write to is possible\n"));
+		break;
+	}
+	return 0;
+}
+#endif
 
 HRESULT CBTHostDlg::OnBtnSoft1(IHTMLElement* /*pElement*/)
 {
@@ -759,6 +787,15 @@ HRESULT CBTHostDlg::Connect(
 			m_ReadThreadArgs.socketLocal = socketLocal;
 			_ASSERT(INVALID_HANDLE_VALUE != m_ReadThreadArgs.hEvtTerminate);
 			m_hReadThread = (HANDLE)_beginthreadex(NULL, 0, CBTHostDlg::BTReadThread, &m_ReadThreadArgs, 0, NULL);
+#endif
+
+#ifdef WSAASYNCSELECT
+			/*
+			* Alertable I/O, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363772(v=vs.85).aspx
+			*
+			* WSAAsyncSelect Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms741540(v=vs.85).aspx
+			*/
+			::WSAAsyncSelect(CBTHostDlg::m_socketLocal, m_hWnd, 0, FD_READ | FD_WRITE);
 #endif
 		}
 		else
@@ -1371,12 +1408,38 @@ HRESULT CBTHostDlg::enumBTServices(
 void CBTHostDlg::txBytes(
 	BSTR bstrBytes)
 {
+#ifdef WSAASYNCSELECT
+	// convert intel Hex format (bstrBytes) into byte buffer (rgData)
+	char rgData[0x0100];
+	char* pWrite = rgData;
+	{ // local variable scope
+		WCHAR* pcNext = NULL;
+		LPWSTR szToken = _tcstok_s(bstrBytes, L" ", &pcNext); // bstrBytes will be modified!
+		while (NULL != szToken)
+		{
+			*pWrite++ = _tcstol(szToken, NULL, 16);
+			szToken = _tcstok_s(NULL, L" ", &pcNext);
+		}
+	}
+
 	/*
 	* Alertable I/O, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363772(v=vs.85).aspx
 	*
 	* WSAAsyncSelect Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms741540(v=vs.85).aspx
-	::WSAAsyncSelect
+	* error: deprecated function
 	*/
+	const int iBytesSend = ::send(CBTHostDlg::m_socketLocal, rgData, pWrite - rgData, 0);
+	if (pWrite - rgData < iBytesSend)
+	{
+		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
+		ATLTRACE2(atlTraceGeneral, 0, _T("block splitted/segmented! sizeofFirstBlock: 0x%.8x\n"), iBytesSend);
+	}
+	else
+	{
+		_ASSERT(pWrite - rgData == iBytesSend);
+		ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x\n"), iBytesSend);
+	}
+#endif
 
 #ifdef SEND_ASYNC
 	// convert intel Hex format (bstrBytes) into byte buffer (rgData)
@@ -1419,8 +1482,9 @@ void CBTHostDlg::txBytes(
 			}
 		}
 	}
-#else
+#endif
 
+#if !defined(WSAASYNCSELECT) && !defined(SEND_ASYNC)
 	// convert intel Hex format (bstrBytes) into byte buffer (rgData)
 	char rgData[0x0100];
 	char* pWrite = rgData;
@@ -1434,10 +1498,12 @@ void CBTHostDlg::txBytes(
 		}
 	}
 
-	if (SOCKET_ERROR == ::send(CBTHostDlg::m_socketLocal, rgData, pWrite - rgData, 0))
+	const int iBytesSend = ::send(CBTHostDlg::m_socketLocal, rgData, pWrite - rgData, 0);
+	if (SOCKET_ERROR == iBytesSend)
 		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
 
-	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x\n"), pWrite - rgData);
+	_ASSERT(iBytesSend == pWrite - rgData);
+	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x\n"), iBytesSend);
 #endif
 }
 

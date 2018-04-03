@@ -68,8 +68,12 @@ protected:
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
 	afx_msg void OnClose();
+#ifdef READ_THREAD
 	afx_msg LRESULT OnRXSingleByte(WPARAM wParam, LPARAM lParam);
-
+#endif
+#ifdef WSAASYNCSELECT
+	LRESULT OnAsyncSelectKRT2(WPARAM wParam, LPARAM lParam);
+#endif
 	DECLARE_MESSAGE_MAP()
 	DECLARE_DHTML_EVENT_MAP()
 	HRESULT OnBtnSoft1(IHTMLElement* pElement);
