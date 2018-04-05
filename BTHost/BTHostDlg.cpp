@@ -392,20 +392,33 @@ LRESULT CBTHostDlg::OnRXSingleByte(WPARAM wParam, LPARAM lParam)
 #endif
 
 #ifdef WSAASYNCSELECT
+// Although WSAAsyncSelect can be called with interest in multiple events, the application window will receive a single message for each network event.
 LRESULT CBTHostDlg::OnAsyncSelectKRT2(WPARAM wParam, LPARAM lParam)
 {
+	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::OnAsyncSelectKRT2() WSAGETSELECTERROR: 0x%.8x\n"), WSAGETSELECTERROR(lParam));
+
 	switch (WSAGETSELECTEVENT(lParam))
 	{
 		case FD_READ:
 		{
-			ATLTRACE2(atlTraceGeneral, 0, _T("try read\n"));
+			const DWORD dwStart = ::GetTickCount();
 			char buf[0x01];
-			const int iNumberOfBytesRecvd = ::recv(CBTHostDlg::m_socketLocal, buf, sizeof(buf), 0);
-			ATLTRACE2(atlTraceGeneral, 0, _T("number of bytes received(Async): 0x%.8x, byte: %d\n"), iNumberOfBytesRecvd, *buf);
+			const int iNumberOfBytesRecvd = ::recv(CBTHostDlg::m_socketLocal, buf, _countof(buf), 0);
+			const DWORD dwTickDiff = ::GetTickCount() - dwStart;
+			_ASSERT(1000 > dwTickDiff);
+			ATLTRACE2(atlTraceGeneral, 0, _T("byte: 0x%.8x received, dwTickDiff: %d\n"), *buf, dwTickDiff);
 		}
 			break;
+
+/*
+* The FD_WRITE event is handled slightly differently.
+* An FD_WRITE message is posted when a socket is first connected with connect or WSAConnect (after FD_CONNECT, if also registered) or
+* accepted with accept or WSAAccept, and then after a send operation fails with WSAEWOULDBLOCK and buffer space becomes available.
+* Therefore, an application can assume that sends are possible starting from the first FD_WRITE message and lasting until a send returns WSAEWOULDBLOCK.
+* After such a failure the application will be notified that sends are again possible with an FD_WRITE message.
+*/
 		case FD_WRITE:
-			ATLTRACE2(atlTraceGeneral, 0, _T("write to is possible\n"));
+			ATLTRACE2(atlTraceGeneral, 0, _T("(R)eady(T)o(S)end\n"));
 			break;
 	}
 	return 0;
@@ -772,18 +785,23 @@ HRESULT CBTHostDlg::Connect(
 	*   A socket created by the socket function will have the overlapped attribute (WSA_FLAG_OVERLAPPED) as the default.
 	*/
 	_ASSERT(INVALID_SOCKET == CBTHostDlg::m_socketLocal);
+	// SOCKET socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	SOCKET socketLocal = ::WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0 /* WSA_FLAG_OVERLAPPED */);
+
 #ifdef TESTCASE_NONBLOCKING
 	ATLTRACE2(atlTraceGeneral, 0, _T("TESTCASE_NONBLOCKING: reduce buffersizes (SO_SNDBUF/SO_RCVBUF) to ZERO!\n"));
-	SOCKET socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	int iBufSize = 0;
-	if (::setsockopt(socketLocal, SOL_SOCKET, SO_SNDBUF, (const char*)&iBufSize, sizeof(iBufSize)))
+	DWORD dwBufSize = 0;
+	if (SOCKET_ERROR == ::setsockopt(socketLocal, SOL_SOCKET, SO_SNDBUF, (const char*)&dwBufSize, sizeof(dwBufSize)))
 		CBTHostDlg::ShowWSALastError(_T("::setsockopt(..., SO_SNDBUF, 0, ...)"));
-	if (::setsockopt(socketLocal, SOL_SOCKET, SO_RCVBUF, (const char*)&iBufSize, sizeof(iBufSize)))
+	if (SOCKET_ERROR == ::setsockopt(socketLocal, SOL_SOCKET, SO_RCVBUF, (const char*)&dwBufSize, sizeof(dwBufSize)))
 		CBTHostDlg::ShowWSALastError(_T("::setsockopt(..., SO_RCVBUF, 0, ...)"));
-#else
 
-	SOCKET socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	int iOptLen = sizeof(dwBufSize);
+	if (SOCKET_ERROR == ::getsockopt(socketLocal, SOL_SOCKET, SO_SNDBUF, (char*)&dwBufSize, &iOptLen))
+		CBTHostDlg::ShowWSALastError(_T("::getsockopt(..., SO_SNDBUF, ...)"));
+	ATLTRACE2(atlTraceGeneral, 0, _T("SO_SNDBUF: %d\n"), dwBufSize);
 #endif
+
 	if (INVALID_SOCKET != socketLocal)
 	{
 		if (INVALID_SOCKET != ::connect(socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
@@ -813,7 +831,8 @@ HRESULT CBTHostDlg::Connect(
 			*
 			* WSAAsyncSelect Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms741540(v=vs.85).aspx
 			*/
-			::WSAAsyncSelect(CBTHostDlg::m_socketLocal, m_hWnd, WM_USER_KRT2, FD_READ | FD_WRITE);
+			if (SOCKET_ERROR == ::WSAAsyncSelect(CBTHostDlg::m_socketLocal, m_hWnd, WM_USER_KRT2, FD_READ | FD_WRITE))
+				CBTHostDlg::ShowWSALastError(_T("::WSAAsyncSelect(..., FD_READ | FD_WRITE)"));
 #endif
 		}
 		else
@@ -1436,17 +1455,29 @@ void CBTHostDlg::txBytes(
 			*pWrite++ = _tcstol(szToken, NULL, 16);
 			szToken = _tcstok_s(NULL, L" ", &pcNext);
 		}
+
+#ifdef TESTCASE_NONBLOCKING
+		while (pWrite < rgData + _countof(rgData)) // fill the buffer
+			*pWrite++ = ' ';
+#endif
 	}
 
 	/*
 	* Alertable I/O, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363772(v=vs.85).aspx
 	*
-	* WSAAsyncSelect Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms741540(v=vs.85).aspx
+	* send function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms740149(v=vs.85).aspx
 	* error: deprecated function
 	*/
+	const DWORD dwStart = ::GetTickCount();
 	const int iBytesSend = ::send(CBTHostDlg::m_socketLocal, rgData, pWrite - rgData, 0);
+	const DWORD dwTickDiff = ::GetTickCount() - dwStart;
+	_ASSERT(1000 > dwTickDiff);
 	if (pWrite - rgData < iBytesSend)
 	{
+		const int iLastError = ::WSAGetLastError();
+		if (WSAEWOULDBLOCK == iLastError)
+			ATLTRACE2(atlTraceGeneral, 0, _T("wait for FD_WRITE to continue\n"));
+
 		// um das zu forcieren braucht es: TESTCASE_NONBLOCKING
 		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
 		ATLTRACE2(atlTraceGeneral, 0, _T("block splitted/segmented! sizeofFirstBlock: 0x%.8x\n"), iBytesSend);
@@ -1454,7 +1485,7 @@ void CBTHostDlg::txBytes(
 	else
 	{
 		_ASSERT(pWrite - rgData == iBytesSend);
-		ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x\n"), iBytesSend);
+		ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x, dwTickDiff: %d\n"), iBytesSend, dwTickDiff);
 	}
 #endif
 
@@ -1513,6 +1544,11 @@ void CBTHostDlg::txBytes(
 			*pWrite++ = _tcstol(szToken, NULL, 16);
 			szToken = _tcstok_s(NULL, L" ", &pcNext);
 		}
+
+#ifdef TESTCASE_NONBLOCKING
+		while (pWrite < rgData + _countof(rgData)) // fill the buffer
+			*pWrite++ = ' ';
+#endif
 	}
 
 	const int iBytesSend = ::send(CBTHostDlg::m_socketLocal, rgData, pWrite - rgData, 0);

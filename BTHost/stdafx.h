@@ -58,7 +58,7 @@
 *   WSAAsyncSelect maps socket notifications to Windows messages and is the best model for a single threaded GUI application.
 */
 #define TESTCASE_NONBLOCKING
-#define WSAASYNCSELECT
+// #define WSAASYNCSELECT
 
 // either SEND_ASYNC or not
 // #define SEND_ASYNC
