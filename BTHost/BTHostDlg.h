@@ -59,7 +59,7 @@ protected:
 
 #ifdef SEND_ASYNC
 	static WSAOVERLAPPED m_SendOverlapped;
-	static char m_sendBuf[0x100];
+	static char m_sendBuf[0x0100];
 	static WSABUF m_sendBuffer;
 	static void CALLBACK SendCompletionRoutine(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags);
 #endif

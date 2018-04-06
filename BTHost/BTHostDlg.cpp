@@ -65,7 +65,7 @@ END_MESSAGE_MAP()
 
 #ifdef SEND_ASYNC
 /*static*/ WSAOVERLAPPED CBTHostDlg::m_SendOverlapped;
-/*static*/ char CBTHostDlg::m_sendBuf[0x100];
+/*static*/ char CBTHostDlg::m_sendBuf[0x0100];
 /*static*/ WSABUF CBTHostDlg::m_sendBuffer = { _countof(CBTHostDlg::m_sendBuf), CBTHostDlg::m_sendBuf };
 #endif
 
@@ -105,7 +105,18 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 
 	EnableAutomation();
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
-	m_iRetCWSAStartup = -1;
+
+	WORD wVersionRequested = MAKEWORD(2, 2);
+	// WORD wVersionRequested = MAKEWORD(1, 1); // for Overlapped Model
+	WSADATA wsaData;
+	m_iRetCWSAStartup = ::WSAStartup(wVersionRequested, &wsaData);
+	if (0 == m_iRetCWSAStartup)
+	{
+		_ASSERT(LOBYTE(wsaData.wVersion) == 2 || HIBYTE(wsaData.wVersion) == 2);
+	}
+	else
+		CBTHostDlg::ShowWSALastError(_T("WSAStartup"));
+
 	m_addrKRT2 = {
 		AF_BTH, // USHORT addressFamily;
 		BTH_ADDR_NULL, // BTH_ADDR btAddr;
@@ -129,7 +140,50 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	m_addrSimulator.sin_family = AF_INET;
 	// BTSample\TCPEchoServer, https://msdn.microsoft.com/de-de/library/windows/desktop/ms737593(v=vs.85).aspx
 	m_addrSimulator.sin_port = ::htons(KRT2INPUT_PORT);
-	// m_addrSimulator.sin_addr.s_addr = ::inet_addr("127.0.0.1"); // stdafx.h(18) #define _WINSOCK_DEPRECATED_NO_WARNINGS or
+
+	ADDRINFOW aiHints; // = { AI_PASSIVE, AF_INET, SOCK_STREAM, IPPROTO_TCP, 0, NULL, NULL, NULL };
+	::ZeroMemory(&aiHints, sizeof(aiHints));
+	// aiHints.ai_flags = AI_PASSIVE;
+	aiHints.ai_family = AF_INET; // AF_INET, AF_UNSPEC
+	aiHints.ai_socktype = SOCK_STREAM;
+	aiHints.ai_protocol = IPPROTO_TCP;
+	ADDRINFOW* pAI = NULL;
+	// GetAddrInfoW function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms738519(v=vs.85).aspx
+	const int iRetC = ::GetAddrInfo(KRT2INPUT_SERVER, L"27015", &aiHints, &pAI); // "27015", TOSTR(KRT2INPUT_PORT)
+	if (0 == iRetC)
+	{
+		for(ADDRINFOW* pCurrent = pAI; pCurrent; pCurrent = pCurrent->ai_next)
+		{
+			LPSOCKADDR sockaddr_ip;
+
+			// Hole den Pointer zu der Adresse
+			// Verschiedene Felder für IPv4 und IPv6
+			if (AF_INET == pCurrent->ai_family)  // IPv4
+			{
+				sockaddr_ip = (LPSOCKADDR)pCurrent->ai_addr;
+			}
+
+			else if (AF_INET6 == pCurrent->ai_family) // IPv6
+			{
+				sockaddr_ip = (LPSOCKADDR)pCurrent->ai_addr;
+			}
+
+			wchar_t ipstringbuffer[46];
+			DWORD ipbufferlength = 46;
+			if (::WSAAddressToString(sockaddr_ip, (DWORD)pCurrent->ai_addrlen, NULL, ipstringbuffer, &ipbufferlength))
+				CBTHostDlg::ShowWSALastError(_T("::WSAAddressToString()"));
+			else
+				ATLTRACE2(atlTraceGeneral, 0, _T("IP address %ws\n"), ipstringbuffer);
+
+			m_addrSimulator.sin_addr = ((struct sockaddr_in*) pAI->ai_addr)->sin_addr;
+			_ASSERT(sizeof(struct sockaddr_in) == pAI->ai_addrlen);
+		}
+		::FreeAddrInfoW(pAI); // Leere die Linked List
+	}
+	else
+		CBTHostDlg::ShowWSALastError(_T("::getaddrinfo()") KRT2INPUT_SERVER);
+
+	/* m_addrSimulator.sin_addr.s_addr = ::inet_addr("127.0.0.1"); // stdafx.h(18) #define _WINSOCK_DEPRECATED_NO_WARNINGS or
 	switch (::InetPton(AF_INET, L"127.0.0.1", &m_addrSimulator.sin_addr)) // wir wollen explicit eine IPv4 addresse
 	{
 	case 0: // invalid (String encoded) address
@@ -137,9 +191,9 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	case 1: // succeeded
 		break;
 	default:
-		::WSAGetLastError();
+		CBTHostDlg::ShowWSALastError(_T("::InetPton(\"127.0.0.1\")"));
 		break;
-	}
+	} */
 #endif
 
 #ifdef READ_THREAD
@@ -213,16 +267,6 @@ CBTHostDlg::CBTHostDlg(CWnd* pParent /*=NULL*/)
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
 	// TODO: Add extra initialization here
-	WORD wVersionRequested = MAKEWORD(2, 2);
-	// WORD wVersionRequested = MAKEWORD(1, 1); // for Overlapped Model
-	WSADATA wsaData;
-	m_iRetCWSAStartup = ::WSAStartup(wVersionRequested, &wsaData);
-	if (0 == m_iRetCWSAStartup)
-	{
-		_ASSERT(LOBYTE(wsaData.wVersion) == 2 || HIBYTE(wsaData.wVersion) == 2);
-	}
-	else
-		CBTHostDlg::ShowWSALastError(_T("WSAStartup"));
 
 	// Connect();
 	return TRUE; // return TRUE  unless you set the focus to a control
@@ -947,7 +991,7 @@ HRESULT CBTHostDlg::enumBTServices(
 	LPCWSTR szDeviceAddress,
 	GUID serviceClass)
 {
-	WCHAR szGUID[0x100];
+	WCHAR szGUID[0x0100];
 	::StringFromGUID2(serviceClass, szGUID, _countof(szGUID));
 	ATLTRACE2(atlTraceGeneral, 0, _T("enumBTServices(%s, %s)\n"), szDeviceAddress, szGUID);
 
@@ -1008,7 +1052,7 @@ HRESULT CBTHostDlg::enumBTServices(
 
 					// MUSS die gleiche address/ergebnis haben wie oben nur API
 					WSAPROTOCOL_INFO ProtocolInfo;
-					WCHAR szAddress[0x100];
+					WCHAR szAddress[0x0100];
 					DWORD dwAddressLen = _countof(szAddress);
 					if(0 != ::WSAAddressToString(addrService->RemoteAddr.lpSockaddr, sizeof(SOCKADDR_BTH), NULL /* &ProtocolInfo */, szAddress, &dwAddressLen))
 						CBTHostDlg::ShowWSALastError(_T("WSAAddressToString (service discovery)"));
@@ -1534,7 +1578,7 @@ void CBTHostDlg::txBytes(
 
 #if !defined(WSAASYNCSELECT) && !defined(SEND_ASYNC)
 	// convert intel Hex format (bstrBytes) into byte buffer (rgData)
-	char rgData[0x0100];
+	char rgData[0x80000];
 	char* pWrite = rgData;
 	{ // local variable scope
 		WCHAR* pcNext = NULL;
