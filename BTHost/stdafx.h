@@ -51,6 +51,13 @@
 #define BTNSOFT2_CONNECT
 // #define BTNSOFT2_KRT2PING
 
+/*
+* almost every configuration requires WSAXX API calls IOALERTABLE, WSAASYNCSELECT
+* so schoen/einfach die classische socket API sein mag. ein nonblocking bzw. async model mag ich damit NICHT programmieren
+* Hinweis: ein mischen der classic und der WSA API bringt meiner erfahrung nach UNPREDICTABLE BEHAVIOUR
+*/
+#define USE_WSA
+
 // either READ_THREAD, IOALERTABLE or WSAASYNCSELECT
 // #define READ_THREAD
 // #define IOALERTABLE
@@ -58,11 +65,9 @@
 * https://support.microsoft.com/en-us/help/181611/socket-overlapped-i-o-versus-blocking-nonblocking-mode
 *   WSAAsyncSelect maps socket notifications to Windows messages and is the best model for a single threaded GUI application.
 */
-#define TESTCASE_NONBLOCKING
-// #define WSAASYNCSELECT
-
-// either SEND_ASYNC or not
-// #define SEND_ASYNC
+// #define TESTCASE_NONBLOCKING_SEND
+#define WSAASYNCSELECT
+// #define NONBLOCKING
 
 #ifdef _UNICODE
 #if defined _M_IX86

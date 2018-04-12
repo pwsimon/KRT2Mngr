@@ -63,11 +63,9 @@ END_MESSAGE_MAP()
 /*static*/ WSABUF CBTHostDlg::m_readBuffer = { _countof(CBTHostDlg::m_buf), CBTHostDlg::m_buf };
 #endif
 
-#ifdef SEND_ASYNC
 /*static*/ WSAOVERLAPPED CBTHostDlg::m_SendOverlapped;
-/*static*/ char CBTHostDlg::m_sendBuf[0x0100];
+/*static*/ char CBTHostDlg::m_sendBuf[0x10000];
 /*static*/ WSABUF CBTHostDlg::m_sendBuffer = { _countof(CBTHostDlg::m_sendBuf), CBTHostDlg::m_sendBuf };
-#endif
 
 /*static*/ SOCKET CBTHostDlg::m_socketLocal = INVALID_SOCKET;
 
@@ -445,12 +443,22 @@ LRESULT CBTHostDlg::OnAsyncSelectKRT2(WPARAM wParam, LPARAM lParam)
 	{
 		case FD_READ:
 		{
-			const DWORD dwStart = ::GetTickCount();
 			char buf[0x01];
-			const int iNumberOfBytesRecvd = ::recv(CBTHostDlg::m_socketLocal, buf, _countof(buf), 0);
+			WSABUF wsaBuffer = { _countof(buf), buf };
+			DWORD dwNumberOfBytesRecvd = 0;
+			DWORD dwFlags = 0; // MSG_PARTIAL, MSG_OOB
+			const DWORD dwStart = ::GetTickCount();
+			const int iRetC = ::WSARecv(CBTHostDlg::m_socketLocal, &wsaBuffer, 1, &dwNumberOfBytesRecvd, &dwFlags, NULL, NULL);
 			const DWORD dwTickDiff = ::GetTickCount() - dwStart;
-			_ASSERT(1000 > dwTickDiff);
-			ATLTRACE2(atlTraceGeneral, 0, _T("byte: 0x%.8x received, dwTickDiff: %d\n"), *buf, dwTickDiff);
+			_ASSERT(1000 > dwTickDiff); // da hat was blockiert???
+			if (SOCKET_ERROR != iRetC)
+			{
+				_ASSERT(_countof(buf) == dwNumberOfBytesRecvd);
+				ATLTRACE2(atlTraceGeneral, 0, _T("byte: 0x%.8x received, dwTickDiff: %d\n"), *buf, dwTickDiff);
+				m_ddScript.Invoke1(_T("OnRXSingleByte"), &CComVariant(*buf));
+			}
+			else
+				CBTHostDlg::ShowWSALastError(_T("::WSARecv(m_socketLocal, ...)"));
 		}
 			break;
 
@@ -829,10 +837,15 @@ HRESULT CBTHostDlg::Connect(
 	*   A socket created by the socket function will have the overlapped attribute (WSA_FLAG_OVERLAPPED) as the default.
 	*/
 	_ASSERT(INVALID_SOCKET == CBTHostDlg::m_socketLocal);
-	// SOCKET socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#ifdef USE_WSA
 	SOCKET socketLocal = ::WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0 /* WSA_FLAG_OVERLAPPED */);
+#else
+	SOCKET socketLocal = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#endif
 
-#ifdef TESTCASE_NONBLOCKING
+#ifdef TESTCASE_NONBLOCKING_SEND
+#ifdef USE_WSA
+#else
 	ATLTRACE2(atlTraceGeneral, 0, _T("TESTCASE_NONBLOCKING: reduce buffersizes (SO_SNDBUF/SO_RCVBUF) to ZERO!\n"));
 	DWORD dwBufSize = 0;
 	if (SOCKET_ERROR == ::setsockopt(socketLocal, SOL_SOCKET, SO_SNDBUF, (const char*)&dwBufSize, sizeof(dwBufSize)))
@@ -845,10 +858,15 @@ HRESULT CBTHostDlg::Connect(
 		CBTHostDlg::ShowWSALastError(_T("::getsockopt(..., SO_SNDBUF, ...)"));
 	ATLTRACE2(atlTraceGeneral, 0, _T("SO_SNDBUF: %d\n"), dwBufSize);
 #endif
+#endif
 
 	if (INVALID_SOCKET != socketLocal)
 	{
+#ifdef USE_WSA
+		if(SOCKET_ERROR != ::WSAConnect(socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN), NULL, NULL, NULL, NULL))
+#else
 		if (INVALID_SOCKET != ::connect(socketLocal, (SOCKADDR*)addrServer, sizeof(SOCKADDR_IN)))
+#endif
 		{
 			/*
 			* wir lesen IMMER nonblocking.
@@ -871,13 +889,32 @@ HRESULT CBTHostDlg::Connect(
 
 #ifdef WSAASYNCSELECT
 			/*
-			* Alertable I/O, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363772(v=vs.85).aspx
-			*
 			* WSAAsyncSelect Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms741540(v=vs.85).aspx
+			* The WSAAsyncSelect() Model Program Example, http://www.winsocketdotnetworkprogramming.com/winsock2programming/winsock2advancediomethod5b.html
 			*/
 			if (SOCKET_ERROR == ::WSAAsyncSelect(CBTHostDlg::m_socketLocal, m_hWnd, WM_USER_KRT2, FD_READ | FD_WRITE))
 				CBTHostDlg::ShowWSALastError(_T("::WSAAsyncSelect(..., FD_READ | FD_WRITE)"));
+
+			/*
+			* sobald daten verfuegbar sind werden wir via. WM_USER_KRT2 benachrichtigt und
+			* koennen GLUECKLICHERWEISE GARANTIERT ein byte lesen
+			*/
 #endif
+
+#ifdef NONBLOCKING
+	#ifdef USE_WSA
+			unsigned long ulMode = 1;
+			DWORD dwBytesReturned = 0;
+			if(::WSAIoctl(socketLocal, FIONBIO, &ulMode, sizeof(ulMode), NULL, 0, &dwBytesReturned, NULL, NULL))
+				CBTHostDlg::ShowWSALastError(_T("::WSAIoctl(..., FIONBIO, 1)"));
+	#else
+
+			u_long argp = 1;
+			if (SOCKET_ERROR == ::ioctlsocket(socketLocal, FIONBIO, &argp))
+				CBTHostDlg::ShowWSALastError(_T("::ioctlsocket(..., FIONBIO, 1)"));
+	#endif
+#endif
+
 		}
 		else
 		{
@@ -1484,56 +1521,15 @@ HRESULT CBTHostDlg::enumBTServices(
 }
 #endif
 
+/*
+* wir treiben hier einen IRRSINNS aufwand ein nonblocking send zu implementieren.
+* das hat wirklich nur akademischen nutzen denn:
+*   Windows stellt hier typischerweise buffer in der groessenordnung von 512kB bereit
+*   so das es unter beruecksichtigung des KRT2 protokolles und den dort definierten groessen NIEMALS zu einer blockade kommt.
+*/
 void CBTHostDlg::txBytes(
 	BSTR bstrBytes)
 {
-#ifdef WSAASYNCSELECT
-	// convert intel Hex format (bstrBytes) into byte buffer (rgData)
-	char rgData[0x0100];
-	char* pWrite = rgData;
-	{ // local variable scope
-		WCHAR* pcNext = NULL;
-		LPWSTR szToken = _tcstok_s(bstrBytes, L" ", &pcNext); // bstrBytes will be modified!
-		while (NULL != szToken)
-		{
-			*pWrite++ = _tcstol(szToken, NULL, 16);
-			szToken = _tcstok_s(NULL, L" ", &pcNext);
-		}
-
-#ifdef TESTCASE_NONBLOCKING
-		while (pWrite < rgData + _countof(rgData)) // fill the buffer
-			*pWrite++ = ' ';
-#endif
-	}
-
-	/*
-	* Alertable I/O, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363772(v=vs.85).aspx
-	*
-	* send function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms740149(v=vs.85).aspx
-	* error: deprecated function
-	*/
-	const DWORD dwStart = ::GetTickCount();
-	const int iBytesSend = ::send(CBTHostDlg::m_socketLocal, rgData, pWrite - rgData, 0);
-	const DWORD dwTickDiff = ::GetTickCount() - dwStart;
-	_ASSERT(1000 > dwTickDiff);
-	if (pWrite - rgData < iBytesSend)
-	{
-		const int iLastError = ::WSAGetLastError();
-		if (WSAEWOULDBLOCK == iLastError)
-			ATLTRACE2(atlTraceGeneral, 0, _T("wait for FD_WRITE to continue\n"));
-
-		// um das zu forcieren braucht es: TESTCASE_NONBLOCKING
-		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
-		ATLTRACE2(atlTraceGeneral, 0, _T("block splitted/segmented! sizeofFirstBlock: 0x%.8x\n"), iBytesSend);
-	}
-	else
-	{
-		_ASSERT(pWrite - rgData == iBytesSend);
-		ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x, dwTickDiff: %d\n"), iBytesSend, dwTickDiff);
-	}
-#endif
-
-#ifdef SEND_ASYNC
 	// convert intel Hex format (bstrBytes) into byte buffer (rgData)
 	char* pWrite = CBTHostDlg::m_sendBuf;
 	{ // local variable scope
@@ -1545,11 +1541,75 @@ void CBTHostDlg::txBytes(
 			szToken = _tcstok_s(NULL, L" ", &pcNext);
 		}
 
-		pWrite = CBTHostDlg::m_sendBuf + _countof(CBTHostDlg::m_sendBuf);
-		for (int iIndex = 0xff; 0 <= iIndex; iIndex -= 1)
-			CBTHostDlg::m_sendBuf[iIndex] = iIndex;
+#ifdef TESTCASE_NONBLOCKING_SEND
+		while (pWrite < CBTHostDlg::m_sendBuf + _countof(CBTHostDlg::m_sendBuf)) // fill the buffer
+			*pWrite++ = ' ';
+		_ASSERT(_countof(CBTHostDlg::m_sendBuf) == CBTHostDlg::m_sendBuffer.len);
+#else
+
+		CBTHostDlg::m_sendBuffer.len = pWrite - CBTHostDlg::m_sendBuf;
+#endif
 	}
 
+#ifdef USE_WSA
+	/*
+	* WSASend Function, https://msdn.microsoft.com/de-de/library/windows/desktop/ms742203(v=vs.85).aspx
+	*/
+	DWORD dwBytesSent = 0;
+	DWORD dwFlags = 0;
+	const int iRetC = ::WSASend(CBTHostDlg::m_socketLocal, &CBTHostDlg::m_sendBuffer, 1, &dwBytesSent, dwFlags, NULL, NULL);
+	if (0 == iRetC)
+	{
+		ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x\n"), dwBytesSent);
+	}
+
+	else
+	{
+		_ASSERT(SOCKET_ERROR == iRetC);
+		const int iLastError = ::WSAGetLastError();
+		if (WSAEWOULDBLOCK == iLastError) // A non-blocking socket operation could not be completed immediately. (10035L)
+		{
+#ifdef WSAASYNCSELECT
+			ATLTRACE2(atlTraceGeneral, 0, _T("wait for FD_WRITE\n"));
+#else
+			ATLTRACE2(atlTraceGeneral, 0, _T("send incomplete, try again\n"));
+#endif
+		}
+	}
+#else
+
+	/*
+	* Alertable I/O, https://msdn.microsoft.com/en-us/library/windows/desktop/aa363772(v=vs.85).aspx
+	*
+	* send function, https://msdn.microsoft.com/en-us/library/windows/desktop/ms740149(v=vs.85).aspx
+	* error: deprecated function
+	*/
+	const DWORD dwStart = ::GetTickCount();
+	const int iBytesSend = ::send(CBTHostDlg::m_socketLocal, CBTHostDlg::m_sendBuffer.buf, CBTHostDlg::m_sendBuffer.len, 0);
+	const DWORD dwTickDiff = ::GetTickCount() - dwStart;
+	_ASSERT(1000 > dwTickDiff);
+	if (SOCKET_ERROR == iBytesSend)
+	{
+	}
+
+	else if (CBTHostDlg::m_sendBuffer.len < iBytesSend)
+	{
+		const int iLastError = ::WSAGetLastError();
+		if (WSAEWOULDBLOCK == iLastError)
+			ATLTRACE2(atlTraceGeneral, 0, _T("wait for FD_WRITE to continue\n"));
+
+		// um das zu forcieren braucht es: TESTCASE_NONBLOCKING
+		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
+		ATLTRACE2(atlTraceGeneral, 0, _T("block splitted/segmented! sizeofFirstBlock: 0x%.8x\n"), iBytesSend);
+}
+	else
+	{
+		_ASSERT(CBTHostDlg::m_sendBuffer.len == iBytesSend);
+		ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x, dwTickDiff: %d\n"), iBytesSend, dwTickDiff);
+	}
+#endif
+
+#ifdef IOALERTABLE
 	{ // send data
 		// Make sure the SendOverlapped struct is zeroed out
 		SecureZeroMemory((PVOID)& CBTHostDlg::m_SendOverlapped, sizeof(WSAOVERLAPPED));
@@ -1575,36 +1635,9 @@ void CBTHostDlg::txBytes(
 		}
 	}
 #endif
-
-#if !defined(WSAASYNCSELECT) && !defined(SEND_ASYNC)
-	// convert intel Hex format (bstrBytes) into byte buffer (rgData)
-	char rgData[0x80000];
-	char* pWrite = rgData;
-	{ // local variable scope
-		WCHAR* pcNext = NULL;
-		LPWSTR szToken = _tcstok_s(bstrBytes, L" ", &pcNext); // bstrBytes will be modified!
-		while (NULL != szToken)
-		{
-			*pWrite++ = _tcstol(szToken, NULL, 16);
-			szToken = _tcstok_s(NULL, L" ", &pcNext);
-		}
-
-#ifdef TESTCASE_NONBLOCKING
-		while (pWrite < rgData + _countof(rgData)) // fill the buffer
-			*pWrite++ = ' ';
-#endif
-	}
-
-	const int iBytesSend = ::send(CBTHostDlg::m_socketLocal, rgData, pWrite - rgData, 0);
-	if (SOCKET_ERROR == iBytesSend)
-		CBTHostDlg::ShowWSALastError(_T("::send(m_socketLocal, ...)"));
-
-	_ASSERT(iBytesSend == pWrite - rgData);
-	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::txBytes() number of bytes send(Sync): 0x%.8x\n"), iBytesSend);
-#endif
 }
 
-#ifdef SEND_ASYNC
+#ifdef IOALERTABLE
 /*static*/ void CBTHostDlg::SendCompletionRoutine(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags)
 {
 	ATLTRACE2(atlTraceGeneral, 0, _T("CBTHostDlg::SendCompletionRoutine() cbTransferred: 0x%.8x\n"), cbTransferred);

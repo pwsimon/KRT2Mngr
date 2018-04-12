@@ -57,12 +57,10 @@ protected:
 	static void CALLBACK RecvCompletionRoutine(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags);
 #endif
 
-#ifdef SEND_ASYNC
 	static WSAOVERLAPPED m_SendOverlapped;
-	static char m_sendBuf[0x0100];
+	static char m_sendBuf[0x10000];
 	static WSABUF m_sendBuffer;
 	static void CALLBACK SendCompletionRoutine(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags);
-#endif
 
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
